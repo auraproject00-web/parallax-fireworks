@@ -2,6 +2,7 @@
 <html lang="id">
 <head>
   <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
   <title>Parallax Nama + Fireworks + Sound</title>
   <style>
     /* Layout dasar */
@@ -89,6 +90,23 @@
       transition: transform 0.1s ease, background 0.2s ease;
       font-weight: 600;
     }
+    .name-form { display: flex; gap: 6px; }
+    .name-input {
+      width: 140px;
+      background: rgba(255,255,255,0.06);
+      color: #e8f6ff;
+      border: 1px solid rgba(255,255,255,0.15);
+      padding: 8px 10px;
+      border-radius: 10px;
+      font: inherit;
+      font-weight: 600;
+      text-transform: uppercase;
+    }
+    .name-input::placeholder { color: #7fa6cc; text-transform: none; }
+    @media (max-width: 600px) {
+      .controls { left: 16px; flex-wrap: wrap; justify-content: flex-end; }
+      .hint { bottom: auto; top: 16px; }
+    }
     .btn:hover { transform: translateY(-2px); background: rgba(255,255,255,0.12); }
     .hint {
       position: fixed;
@@ -108,26 +126,21 @@
   <!-- Parallax name -->
   <section class="parallax">
     <div class="name-wrap" id="nameWrap" aria-label="Nama Parallax">
-      <!-- Ganti teks di sini -->
-      <!-- Tips: pakai huruf kapital biar lebih tebal -->
-      <span class="char" data-depth="1">H</span>
-      <span class="char" data-depth="2">E</span>
-      <span class="char" data-depth="3">N</span>
-      <span class="char" data-depth="4">D</span>
-      <span class="char" data-depth="5">R</span>
-      <span class="char" data-depth="1">A</span>
-      <span class="char" data-depth="2">W</span>
-      <span class="char" data-depth="3">A</span>
-      <span class="char" data-depth="4">N</span>
+      <!-- Huruf diisi otomatis dari nama pemain (lihat script di bawah) -->
     </div>
   </section>
 
   <!-- Controls -->
-  <div class="controls">
+  <div class="controls" id="controls">
+    <form id="nameForm" class="name-form">
+      <input id="nameInput" class="name-input" type="text" maxlength="12"
+             placeholder="Ketik namamu" aria-label="Nama kamu" autocomplete="off" />
+      <button type="submit" class="btn">Pakai</button>
+    </form>
     <button id="fireBtn" class="btn">Kembang Api!</button>
     <button id="muteBtn" class="btn">Mute</button>
   </div>
-  <div class="hint">Gerakkan mouse untuk parallax. Klik di mana saja untuk kembang api + sound.</div>
+  <div class="hint">Ketik namamu di kanan bawah. Gerakkan mouse untuk parallax, klik di mana saja untuk kembang api.</div>
 
   <!-- Audio: pastikan file ada di path ini -->
   <!-- Ganti src ke file kamu sendiri, misal ./sounds/firework.mp3 -->
@@ -138,7 +151,42 @@
   <script>
     /* ===== Parallax logic ===== */
     const nameWrap = document.getElementById('nameWrap');
-    const chars = Array.from(document.querySelectorAll('.char'));
+    const nameInput = document.getElementById('nameInput');
+    let chars = [];
+
+    // Nama dari ?nama=... di URL, lalu dari kunjungan sebelumnya, lalu default
+    function loadName() {
+      const fromUrl = new URLSearchParams(location.search).get('nama');
+      if (fromUrl && fromUrl.trim()) return fromUrl;
+      try { return localStorage.getItem('playerName') || 'HALO'; } catch (e) { return 'HALO'; }
+    }
+
+    function setName(raw) {
+      const name = (raw || '').trim().toUpperCase().slice(0, 12) || 'HALO';
+      nameWrap.replaceChildren();
+      Array.from(name).forEach((ch, i) => {
+        const span = document.createElement('span');
+        span.className = 'char';
+        span.dataset.depth = String((i % 5) + 1);
+        span.textContent = ch === ' ' ? '\u00A0' : ch;
+        nameWrap.appendChild(span);
+      });
+      chars = Array.from(nameWrap.querySelectorAll('.char'));
+      nameWrap.setAttribute('aria-label', name);
+      nameInput.value = name;
+      document.title = name + ' + Fireworks';
+      try { localStorage.setItem('playerName', name); } catch (e) {}
+    }
+
+    document.getElementById('nameForm').addEventListener('submit', (e) => {
+      e.preventDefault();
+      setName(nameInput.value);
+      nameInput.blur();
+      spawnFirework(W / 2, H * 0.35);
+    });
+
+    // Klik di area kontrol tidak memicu kembang api tambahan
+    document.getElementById('controls').addEventListener('click', (e) => e.stopPropagation());
     let cx = 0, cy = 0;
 
     window.addEventListener('mousemove', (e) => {
@@ -272,6 +320,8 @@ function spawnFirework(x, y) {
       requestAnimationFrame(loop);
     }
     requestAnimationFrame(loop);
+
+    setName(loadName());
 
     // Interaksi: klik layar atau tombol
     window.addEventListener('click', (e) => {
