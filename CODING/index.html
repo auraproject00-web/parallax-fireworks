@@ -2,6 +2,7 @@
 <html lang="id">
 <head>
   <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
   <title>Parallax Nama + Fireworks + Sound</title>
   <style>
     /* Layout dasar */
@@ -10,6 +11,7 @@
       margin: 0;
       background: radial-gradient(1200px circle at 50% 60%, #0b0f18 0%, #05070c 70%);
       overflow: hidden;
+      touch-action: none; /* tap = kembang api, geser = parallax (tanpa scroll/zoom) */
       font-family: system-ui, -apple-system, Segoe UI, Roboto, sans-serif;
       color: #e8f6ff;
     }
@@ -99,6 +101,8 @@
       color: #9cc7ff;
       opacity: 0.8;
       user-select: none;
+      pointer-events: none;
+      max-width: calc(100% - 230px); /* jangan tabrak tombol di layar sempit */
     }
   </style>
 </head>
@@ -127,7 +131,7 @@
     <button id="fireBtn" class="btn">Kembang Api!</button>
     <button id="muteBtn" class="btn">Mute</button>
   </div>
-  <div class="hint">Gerakkan mouse untuk parallax. Klik di mana saja untuk kembang api + sound.</div>
+  <div class="hint">Gerakkan mouse / geser jari / miringkan HP untuk parallax. Klik atau tap di mana saja untuk kembang api + sound.</div>
 
   <!-- Audio: pastikan file ada di path ini -->
   <!-- Ganti src ke file kamu sendiri, misal ./sounds/firework.mp3 -->
@@ -139,14 +143,13 @@
     /* ===== Parallax logic ===== */
     const nameWrap = document.getElementById('nameWrap');
     const chars = Array.from(document.querySelectorAll('.char'));
-    let cx = 0, cy = 0;
 
-    window.addEventListener('mousemove', (e) => {
-      const rect = nameWrap.getBoundingClientRect();
-      const x = (e.clientX - rect.left) / rect.width - 0.5; // -0.5 .. 0.5
-      const y = (e.clientY - rect.top) / rect.height - 0.5; // -0.5 .. 0.5
-      cx = x * 20; // intensitas rotasi X
-      cy = y * -20; // intensitas rotasi Y (balik biar natural)
+    // x, y dalam rentang -0.5 .. 0.5
+    function applyParallax(x, y) {
+      x = Math.max(-0.5, Math.min(0.5, x));
+      y = Math.max(-0.5, Math.min(0.5, y));
+      const cx = x * 20;  // intensitas rotasi X
+      const cy = y * -20; // intensitas rotasi Y (balik biar natural)
 
       nameWrap.style.transform = `rotateY(${cx}deg) rotateX(${cy}deg)`;
 
@@ -157,12 +160,41 @@
         const oy = y * d * 4; // offset vertical
         el.style.transform = `translateZ(${(3 - d) * 8}px) translate(${ox}px, ${oy}px)`;
       });
-    });
+    }
+
+    function parallaxFromPoint(clientX, clientY) {
+      const rect = nameWrap.getBoundingClientRect();
+      applyParallax(
+        (clientX - rect.left) / rect.width - 0.5,
+        (clientY - rect.top) / rect.height - 0.5
+      );
+    }
+
+    // Mouse + geser jari (pointermove juga jalan untuk touch)
+    window.addEventListener('pointermove', (e) => parallaxFromPoint(e.clientX, e.clientY));
+
+    // Kemiringan HP (device tilt)
+    function onTilt(e) {
+      if (e.gamma == null || e.beta == null) return;
+      // gamma: kiri-kanan (-90..90), beta: depan-belakang (-180..180, ~45 saat HP dipegang)
+      applyParallax(e.gamma / 60, (e.beta - 45) / 60);
+    }
+    function enableTilt() {
+      if (typeof DeviceOrientationEvent === 'undefined') return;
+      // iOS 13+ butuh izin dari gesture user
+      if (typeof DeviceOrientationEvent.requestPermission === 'function') {
+        DeviceOrientationEvent.requestPermission()
+          .then((state) => { if (state === 'granted') window.addEventListener('deviceorientation', onTilt); })
+          .catch(() => {});
+      } else {
+        window.addEventListener('deviceorientation', onTilt);
+      }
+    }
 
     /* ===== Fireworks on canvas ===== */
     const canvas = document.getElementById('fwCanvas');
     const ctx = canvas.getContext('2d');
-    let W, H, particles = [];
+    let W, H, particles = [], rockets = [];
 
     function resize() {
       W = canvas.width = window.innerWidth;
@@ -173,6 +205,7 @@
 
     function rand(min, max) { return Math.random() * (max - min) + min; }
     function hsvToRgb(h, s, v) { // h:0-360, s/v:0-1
+      h = ((h % 360) + 360) % 360;
       let c = v * s, x = c * (1 - Math.abs((h / 60) % 2 - 1)), m = v - c;
       let r = 0, g = 0, b = 0;
       if (h < 60) [r,g,b] = [c,x,0];
@@ -184,60 +217,57 @@
       return `rgb(${Math.round((r+m)*255)},${Math.round((g+m)*255)},${Math.round((b+m)*255)})`;
     }
 
-   function launchFirework(x, y) {
-  // posisi awal di bawah layar
-  let rocket = {
-    x: x,
-    y: H,
-    vx: 0,
-    vy: -8, // kecepatan naik
-    exploded: false,
-    color: "white"
-  };
-
-  particles.push(rocket);
-
-  // animasi naik
-  let interval = setInterval(() => {
-    rocket.y += rocket.vy;
-    if (rocket.y <= y) {
-      clearInterval(interval);
-      rocket.exploded = true;
-
-      // spawn ledakan bertahap
-      spawnFirework(rocket.x, rocket.y);
+    // Roket naik dari bawah layar, meledak saat sampai di (x, y)
+    function launchFirework(x, y) {
+      rockets.push({
+        x: x,
+        y: H,
+        targetY: y,
+        vy: -Math.max(8, (H - y) / 45), // kecepatan naik (px per frame @60fps)
+        trail: []
+      });
     }
-  }, 30);
-}
 
-function spawnFirework(x, y) {
-  const hue = rand(0, 360);
+    function spawnFirework(x, y) {
+      const hue = rand(0, 360);
 
-  // bikin 3 batch ledakan bertahap
-  for (let b = 0; b < 4; b++) {
-    setTimeout(() => {
-      const count = Math.floor(rand(25, 40));
-      for (let i = 0; i < count; i++) {
-        const angle = rand(0, Math.PI * 2);
-        const speed = rand(2, 6);
-        particles.push({
-          x, y,
-          vx: Math.cos(angle) * speed,
-          vy: Math.sin(angle) * speed,
-          life: rand(0.8, 1.6),
-          age: 0,
-          color: hsvToRgb(hue + rand(-20, 20), 1, 1)
-        });
+      // bikin 4 batch ledakan bertahap
+      for (let b = 0; b < 4; b++) {
+        setTimeout(() => {
+          const count = Math.floor(rand(25, 40));
+          for (let i = 0; i < count; i++) {
+            const angle = rand(0, Math.PI * 2);
+            const speed = rand(2, 6);
+            particles.push({
+              x, y,
+              vx: Math.cos(angle) * speed,
+              vy: Math.sin(angle) * speed,
+              life: rand(0.8, 1.6),
+              age: 0,
+              color: hsvToRgb(hue + rand(-20, 20), 1, 1)
+            });
+          }
+        }, b * 200); // jeda antar batch
       }
-    }, b * 200); // jeda antar batch
-  }
 
-  // mainkan suara sekali
-  playSound();
-}
+      // tiap ledakan punya suara sendiri
+      playSound();
+    }
 
     function update(dt) {
       const gravity = 0.5;
+
+      rockets = rockets.filter(r => {
+        r.trail.push({ x: r.x, y: r.y });
+        if (r.trail.length > 8) r.trail.shift();
+        r.y += r.vy * dt * 60;
+        if (r.y <= r.targetY) {
+          spawnFirework(r.x, r.targetY);
+          return false;
+        }
+        return true;
+      });
+
       particles = particles.filter(p => p.age < p.life);
       particles.forEach(p => {
         p.vy += gravity * dt;
@@ -253,6 +283,20 @@ function spawnFirework(x, y) {
       ctx.fillRect(0, 0, W, H);
 
       ctx.globalCompositeOperation = 'lighter';
+
+      rockets.forEach(r => {
+        r.trail.forEach((t, i) => {
+          ctx.fillStyle = `rgba(255,220,180,${(i + 1) / r.trail.length * 0.6})`;
+          ctx.beginPath();
+          ctx.arc(t.x, t.y, 1.5, 0, Math.PI * 2);
+          ctx.fill();
+        });
+        ctx.fillStyle = '#fff';
+        ctx.beginPath();
+        ctx.arc(r.x, r.y, 2.5, 0, Math.PI * 2);
+        ctx.fill();
+      });
+
       particles.forEach(p => {
         const t = p.age / p.life;
         const size = Math.max(1, 4 - 3 * t);
@@ -273,45 +317,56 @@ function spawnFirework(x, y) {
     }
     requestAnimationFrame(loop);
 
-    // Interaksi: klik layar atau tombol
+    // Interaksi: klik/tap layar atau tombol
+    const controls = document.querySelector('.controls');
     window.addEventListener('click', (e) => {
-      spawnFirework(e.clientX, e.clientY);
+      // klik di tombol jangan ikut bikin kembang api di posisi kursor
+      if (controls.contains(e.target)) return;
+      launchFirework(e.clientX, e.clientY);
     });
     document.getElementById('fireBtn').addEventListener('click', () => {
       const x = rand(W * 0.2, W * 0.8);
       const y = rand(H * 0.2, H * 0.6);
-      spawnFirework(x, y);
+      launchFirework(x, y);
     });
 
     /* ===== Sound control ===== */
-    const audio = document.getElementById('fwSound');
+    const audioSrc = document.querySelector('#fwSound source').getAttribute('src');
     const muteBtn = document.getElementById('muteBtn');
     let muted = false;
 
-    // Biar audio bisa diputar: butuh gesture user (klik pertama)
+    // Pool audio: tiap ledakan pakai elemen sendiri, jadi suara tidak saling memotong
+    const audioPool = Array.from({ length: 8 }, () => {
+      const a = new Audio(audioSrc);
+      a.preload = 'auto';
+      return a;
+    });
+    let poolIndex = 0;
+
     function playSound() {
-  if (muted) return;
-
-  // Ambil elemen audio asli
-  const audio = document.getElementById("fwSound");
-
-  // Reset ke awal biar bisa overlap
-  audio.currentTime = 0;
-
-  // Play langsung
-  audio.play().catch(err => {
-    console.log("Audio gagal diputar:", err);
-  });
-}
+      if (muted) return;
+      const a = audioPool[poolIndex];
+      poolIndex = (poolIndex + 1) % audioPool.length;
+      a.currentTime = 0;
+      a.play().catch(err => {
+        console.log("Audio gagal diputar:", err);
+      });
+    }
 
     muteBtn.addEventListener('click', () => {
       muted = !muted;
       muteBtn.textContent = muted ? 'Unmute' : 'Mute';
+      if (muted) audioPool.forEach(a => a.pause());
     });
 
-    // Opsional: preload dengan silent play setelah event user
+    // Gesture pertama: buka kunci audio (HP butuh ini) + minta izin tilt
     window.addEventListener('pointerdown', () => {
-      audio.play().then(()=>{ audio.pause(); audio.currentTime = 0; }).catch(()=>{});
+      audioPool.forEach(a => {
+        a.muted = true;
+        a.play().then(() => { a.pause(); a.currentTime = 0; a.muted = false; })
+          .catch(() => { a.muted = false; });
+      });
+      enableTilt();
     }, { once: true });
   </script>
 </body>
