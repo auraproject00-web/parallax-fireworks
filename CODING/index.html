@@ -100,10 +100,100 @@
       opacity: 0.8;
       user-select: none;
     }
+
+    /* ===== Game ===== */
+    #gameCanvas {
+      position: fixed;
+      inset: 0;
+      z-index: 1;
+      pointer-events: none;
+    }
+    body.playing .name-wrap { opacity: 0.25; transition: opacity 0.4s ease; }
+
+    .hud {
+      position: fixed;
+      z-index: 3;
+      top: 14px;
+      left: 50%;
+      transform: translateX(-50%);
+      display: flex;
+      gap: 10px;
+      user-select: none;
+      pointer-events: none;
+    }
+    .hud > div {
+      background: rgba(255,255,255,0.08);
+      border: 1px solid rgba(255,255,255,0.15);
+      border-radius: 12px;
+      padding: 6px 14px;
+      backdrop-filter: blur(6px);
+      text-align: center;
+      min-width: 70px;
+    }
+    .hud small { display: block; font-size: 11px; color: #9cc7ff; letter-spacing: 1px; }
+    .hud b { font-size: 22px; font-variant-numeric: tabular-nums; }
+    .hud .low b { color: #ff7a8a; }
+
+    .overlay {
+      position: fixed;
+      inset: 0;
+      z-index: 4;
+      display: grid;
+      place-items: center;
+      background: rgba(5,7,12,0.55);
+    }
+    .overlay[hidden] { display: none; }
+    .card {
+      text-align: center;
+      padding: 24px 32px;
+      border-radius: 18px;
+      background: rgba(255,255,255,0.06);
+      border: 1px solid rgba(255,255,255,0.15);
+      backdrop-filter: blur(10px);
+      box-shadow: 0 0 40px rgba(0,255,255,0.2);
+      max-width: 340px;
+    }
+    .card h1 { margin: 0 0 8px; font-size: 28px; }
+    .card p { margin: 6px 0; color: #b9dcff; line-height: 1.4; }
+    .card .big { font-size: 44px; font-weight: 800; color: #fff; margin: 4px 0; }
+    .card .newrec { color: #ffd84d; font-weight: 700; }
+    .card .btn { font-size: 18px; padding: 10px 22px; margin-top: 12px; }
+
+    .popup {
+      position: fixed;
+      z-index: 3;
+      font-weight: 800;
+      font-size: 20px;
+      pointer-events: none;
+      transform: translate(-50%, -50%);
+      animation: floatUp 0.9s ease-out forwards;
+      text-shadow: 0 0 8px rgba(0,0,0,0.6);
+    }
+    @keyframes floatUp {
+      to { transform: translate(-50%, -150%); opacity: 0; }
+    }
   </style>
 </head>
 <body>
   <canvas id="fwCanvas"></canvas>
+  <canvas id="gameCanvas"></canvas>
+
+  <!-- HUD game -->
+  <div class="hud">
+    <div><small>SKOR</small><b id="scoreEl">0</b></div>
+    <div id="timeBox"><small>WAKTU</small><b id="timeEl">30</b></div>
+    <div><small>REKOR</small><b id="bestEl">0</b></div>
+  </div>
+
+  <!-- Layar mulai / selesai -->
+  <div class="overlay" id="overlay">
+    <div class="card" id="card">
+      <h1>Pecahkan Balon! 🎈</h1>
+      <p>Klik untuk meledakkan kembang api dan pecahkan balon sebanyak mungkin dalam 30 detik.</p>
+      <p>🎈 +10 &nbsp; ⭐ emas +30 &nbsp; 💣 bom −20<br>Pecah banyak sekaligus = bonus combo!</p>
+      <button class="btn" id="startBtn">Mulai</button>
+    </div>
+  </div>
 
   <!-- Parallax name -->
   <section class="parallax">
@@ -127,7 +217,7 @@
     <button id="fireBtn" class="btn">Kembang Api!</button>
     <button id="muteBtn" class="btn">Mute</button>
   </div>
-  <div class="hint">Gerakkan mouse untuk parallax. Klik di mana saja untuk kembang api + sound.</div>
+  <div class="hint">Klik balon untuk meledakkannya dengan kembang api. Ledakan beruntun = combo!</div>
 
   <!-- Audio: pastikan file ada di path ini -->
   <!-- Ganti src ke file kamu sendiri, misal ./sounds/firework.mp3 -->
@@ -212,6 +302,7 @@
 
 function spawnFirework(x, y) {
   const hue = rand(0, 360);
+  const shot = newShot(); // id tembakan, buat hitung combo
 
   // bikin 3 batch ledakan bertahap
   for (let b = 0; b < 4; b++) {
@@ -226,6 +317,7 @@ function spawnFirework(x, y) {
           vy: Math.sin(angle) * speed,
           life: rand(0.8, 1.6),
           age: 0,
+          shot,
           color: hsvToRgb(hue + rand(-20, 20), 1, 1)
         });
       }
@@ -269,12 +361,16 @@ function spawnFirework(x, y) {
       last = now;
       update(dt);
       draw();
+      updateGame(dt);
+      drawGame();
       requestAnimationFrame(loop);
     }
     requestAnimationFrame(loop);
 
     // Interaksi: klik layar atau tombol
     window.addEventListener('click', (e) => {
+      // klik di tombol / layar mulai jangan ikut meledak
+      if (e.target.closest('.controls, .overlay')) return;
       spawnFirework(e.clientX, e.clientY);
     });
     document.getElementById('fireBtn').addEventListener('click', () => {
@@ -308,6 +404,240 @@ function spawnFirework(x, y) {
       muted = !muted;
       muteBtn.textContent = muted ? 'Unmute' : 'Mute';
     });
+
+    /* ===== Game: pecahkan balon ===== */
+    const GAME_TIME = 30;           // detik
+    const BLAST_TIME = 0.35;        // percikan hanya bisa memecahkan balon di awal ledakan
+    const BEST_KEY = 'balonBest';
+
+    const gameCanvas = document.getElementById('gameCanvas');
+    const gctx = gameCanvas.getContext('2d');
+    const scoreEl = document.getElementById('scoreEl');
+    const timeEl = document.getElementById('timeEl');
+    const timeBox = document.getElementById('timeBox');
+    const bestEl = document.getElementById('bestEl');
+    const overlay = document.getElementById('overlay');
+    const card = document.getElementById('card');
+
+    let state = 'idle';             // idle | playing | over
+    let balloons = [];
+    let score = 0, timeLeft = GAME_TIME, spawnTimer = 0;
+    let shotId = 0, combos = {};
+
+    function loadBest() {
+      try { return parseInt(localStorage.getItem(BEST_KEY), 10) || 0; } catch (e) { return 0; }
+    }
+    function saveBest(v) {
+      try { localStorage.setItem(BEST_KEY, String(v)); } catch (e) {}
+    }
+    let best = loadBest();
+    bestEl.textContent = best;
+
+    function resizeGame() {
+      gameCanvas.width = window.innerWidth;
+      gameCanvas.height = window.innerHeight;
+    }
+    window.addEventListener('resize', resizeGame);
+    resizeGame();
+
+    function newShot() {
+      shotId++;
+      combos[shotId] = 0;
+      return shotId;
+    }
+
+    function spawnBalloon() {
+      const r = Math.random();
+      const type = r < 0.12 ? 'gold' : r < 0.24 ? 'bomb' : 'normal';
+      const radius = type === 'gold' ? 18 : type === 'bomb' ? 22 : rand(24, 30);
+      const fromLeft = Math.random() < 0.5;
+      balloons.push({
+        type,
+        r: radius,
+        x: rand(W * 0.05, W * 0.95),
+        y: H + radius * 2,
+        vx: (fromLeft ? 1 : -1) * rand(10, 50),       // angin ke samping
+        vy: -(type === 'gold' ? rand(130, 170) : rand(60, 110)),
+        phase: rand(0, Math.PI * 2),
+        hue: rand(0, 360)
+      });
+    }
+
+    function popBalloon(b, shot) {
+      b.dead = true;
+      let pts, color;
+      if (b.type === 'bomb') {
+        pts = -20; color = '#ff5a6a';
+      } else {
+        combos[shot] = (combos[shot] || 0) + 1;
+        const mult = Math.min(combos[shot], 5);
+        pts = (b.type === 'gold' ? 30 : 10) * mult;
+        color = b.type === 'gold' ? '#ffd84d' : '#dff8ff';
+        // percikan kecil dari balon yang pecah -> bisa bikin reaksi berantai
+        const hue = b.type === 'gold' ? 48 : b.hue;
+        for (let i = 0; i < 14; i++) {
+          const a = rand(0, Math.PI * 2), s = rand(1.5, 3.5);
+          particles.push({ x: b.x, y: b.y, vx: Math.cos(a) * s, vy: Math.sin(a) * s,
+            life: rand(0.5, 0.9), age: 0, shot, color: hsvToRgb(hue, 0.8, 1) });
+        }
+        if (mult > 1) showPopup(b.x, b.y - 22, `COMBO x${mult}`, '#7cf7ff');
+      }
+      score = Math.max(0, score + pts);
+      scoreEl.textContent = score;
+      showPopup(b.x, b.y, (pts > 0 ? '+' : '') + pts, color);
+      popSound(b.type === 'bomb');
+    }
+
+    function showPopup(x, y, text, color) {
+      const el = document.createElement('div');
+      el.className = 'popup';
+      el.textContent = text;
+      el.style.left = x + 'px';
+      el.style.top = y + 'px';
+      el.style.color = color;
+      document.body.appendChild(el);
+      setTimeout(() => el.remove(), 900);
+    }
+
+    // Suara "pop" kecil pakai WebAudio, tanpa file tambahan
+    let actx = null;
+    function popSound(isBomb) {
+      if (muted) return;
+      try {
+        actx = actx || new (window.AudioContext || window.webkitAudioContext)();
+        const o = actx.createOscillator(), g = actx.createGain(), t = actx.currentTime;
+        o.type = isBomb ? 'sawtooth' : 'triangle';
+        o.frequency.setValueAtTime(isBomb ? 160 : rand(500, 800), t);
+        o.frequency.exponentialRampToValueAtTime(isBomb ? 50 : 120, t + 0.15);
+        g.gain.setValueAtTime(0.25, t);
+        g.gain.exponentialRampToValueAtTime(0.001, t + 0.18);
+        o.connect(g).connect(actx.destination);
+        o.start(t); o.stop(t + 0.2);
+      } catch (e) {}
+    }
+
+    function updateGame(dt) {
+      if (state !== 'playing') return;
+
+      timeLeft -= dt;
+      if (timeLeft <= 0) { endGame(); return; }
+      timeEl.textContent = Math.ceil(timeLeft);
+      timeBox.classList.toggle('low', timeLeft <= 5);
+
+      // makin lama makin banyak balon
+      const elapsed = GAME_TIME - timeLeft;
+      spawnTimer -= dt;
+      if (spawnTimer <= 0) {
+        spawnBalloon();
+        spawnTimer = Math.max(0.25, 0.9 - elapsed * 0.022);
+      }
+
+      balloons.forEach(b => {
+        b.phase += dt * 2;
+        b.x += (b.vx + Math.sin(b.phase) * 25) * dt;
+        b.y += b.vy * dt;
+      });
+
+      // percikan kembang api yang masih "panas" memecahkan balon
+      for (const p of particles) {
+        if (!p.shot || p.age > BLAST_TIME) continue;
+        for (const b of balloons) {
+          if (b.dead) continue;
+          const dx = p.x - b.x, dy = p.y - b.y;
+          if (dx * dx + dy * dy < (b.r + 4) * (b.r + 4)) popBalloon(b, p.shot);
+        }
+      }
+      balloons = balloons.filter(b => !b.dead && b.y > -b.r * 3 && b.x > -80 && b.x < W + 80);
+    }
+
+    function drawBalloon(b) {
+      const { x, y, r } = b;
+      const body = b.type === 'gold' ? '#ffcc33' : b.type === 'bomb' ? '#2a2d36' : `hsl(${b.hue},85%,60%)`;
+      // tali
+      gctx.strokeStyle = 'rgba(220,235,255,0.5)';
+      gctx.lineWidth = 1.2;
+      gctx.beginPath();
+      gctx.moveTo(x, y + r * 1.15);
+      gctx.quadraticCurveTo(x + Math.sin(b.phase) * 8, y + r * 1.8, x, y + r * 2.5);
+      gctx.stroke();
+      // badan
+      gctx.fillStyle = body;
+      gctx.beginPath();
+      gctx.ellipse(x, y, r * 0.85, r * 1.05, 0, 0, Math.PI * 2);
+      gctx.fill();
+      // simpul
+      gctx.beginPath();
+      gctx.moveTo(x - 4, y + r * 1.15);
+      gctx.lineTo(x + 4, y + r * 1.15);
+      gctx.lineTo(x, y + r * 1.0);
+      gctx.fill();
+      // kilap
+      gctx.fillStyle = 'rgba(255,255,255,0.35)';
+      gctx.beginPath();
+      gctx.ellipse(x - r * 0.3, y - r * 0.4, r * 0.18, r * 0.3, -0.4, 0, Math.PI * 2);
+      gctx.fill();
+      if (b.type !== 'normal') {
+        gctx.font = `${Math.round(r)}px system-ui, sans-serif`;
+        gctx.textAlign = 'center';
+        gctx.textBaseline = 'middle';
+        gctx.fillText(b.type === 'gold' ? '⭐' : '💣', x, y + 1);
+      }
+      if (b.type === 'bomb') {
+        gctx.strokeStyle = 'rgba(255,90,106,0.8)';
+        gctx.lineWidth = 2;
+        gctx.beginPath();
+        gctx.ellipse(x, y, r * 0.85 + 2, r * 1.05 + 2, 0, 0, Math.PI * 2);
+        gctx.stroke();
+      }
+    }
+
+    function drawGame() {
+      gctx.clearRect(0, 0, gameCanvas.width, gameCanvas.height);
+      balloons.forEach(drawBalloon);
+    }
+
+    function startGame() {
+      balloons = [];
+      combos = {};
+      score = 0;
+      timeLeft = GAME_TIME;
+      spawnTimer = 0;
+      scoreEl.textContent = '0';
+      timeEl.textContent = GAME_TIME;
+      timeBox.classList.remove('low');
+      overlay.hidden = true;
+      document.body.classList.add('playing');
+      for (let i = 0; i < 4; i++) {           // beberapa balon langsung di layar
+        spawnBalloon();
+        balloons[i].y = rand(H * 0.4, H * 0.9);
+      }
+      state = 'playing';
+    }
+
+    function endGame() {
+      state = 'over';
+      // balon tersisa ikut meledak jadi kembang api penutup
+      balloons.forEach(b => spawnFirework(b.x, b.y));
+      balloons = [];
+      timeEl.textContent = '0';
+      document.body.classList.remove('playing');
+      const isRecord = score > best;
+      if (isRecord) { best = score; saveBest(best); bestEl.textContent = best; }
+      card.innerHTML = `
+        <h1>Waktu habis! ⏰</h1>
+        <p>Skor kamu</p>
+        <div class="big">${score}</div>
+        <p class="${isRecord ? 'newrec' : ''}">${isRecord ? '🏆 Rekor baru!' : 'Rekor: ' + best}</p>
+        <button class="btn" id="startBtn">Main lagi</button>`;
+      document.getElementById('startBtn').addEventListener('click', startGame);
+      overlay.hidden = false;
+      // pesta kembang api di akhir
+      for (let i = 0; i < 4; i++) {
+        setTimeout(() => spawnFirework(rand(W * 0.2, W * 0.8), rand(H * 0.15, H * 0.5)), i * 350);
+      }
+    }
+
+    document.getElementById('startBtn').addEventListener('click', startGame);
 
     // Opsional: preload dengan silent play setelah event user
     window.addEventListener('pointerdown', () => {
