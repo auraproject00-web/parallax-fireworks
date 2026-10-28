@@ -99,57 +99,64 @@ test('alur dari model: 7 alur, inti 5,89, flens 8,39', () => {
 test('kapasitas alur @ kawat 0,2 mm', () => {
   const c = { ...S.DEFAULTS, wireD: 0.2 };
   assert.equal(S.maxLayers(c), 12);                 // (8,39 − 5,89) / 0,2
-  assert.equal(S.turnsPerLayer(c, 0), 6);           // 1,2 / 0,2
-  assert.equal(S.turnsPerLayer(c, 1), 9);
-  assert.equal(S.turnsPerLayer(c, 3), 4);           // 0,9 / 0,2
-  assert.equal(S.maxTurnsPerSlot(c), 48);           // alur tersempit 4 × 12
-  assert.equal(S.create({ turnsPerSlot: 999 }).cfg.turnsPerSlot, 48);
+  assert.equal(S.turnsPerLayer(c, 0), 6);           // alur 1: 1,2 / 0,2
+  assert.equal(S.turnsPerLayer(c, 6), 9);           // alur 7: 1,8 / 0,2
+  assert.deepEqual(S.usedSlots(), [0, 6]);
+  assert.equal(S.maxTurnsPerSlot(c), 72);           // alur 1 lebih sempit: 6 × 12
+  assert.equal(S.create({ turnsPerSlot: 999 }).cfg.turnsPerSlot, 72);
 });
 
-test('target putaran = 7 × lilitan per alur', () => {
+test('dua kawat bersamaan: target putaran = lilitan per alur', () => {
   const s = S.create({ turnsPerSlot: 20 });
-  assert.equal(S.totalTurns(s.cfg), 140);
-  near(s.cfg.targetTurns, 140);
+  assert.equal(S.MODEL.wires.length, 2);
+  assert.equal(S.totalTurns(s.cfg), 20);
+  near(s.cfg.targetTurns, 20);
 });
 
-test('alur diisi berurutan', () => {
+test('kawat kiri di alur 1, kawat kanan di alur 7, terisi bersamaan', () => {
   const c = { ...S.DEFAULTS, turnsPerSlot: 20 };
-  let w = S.winding(c, 0); assert.equal(w.active, 0); assert.ok(w.fills.every((f) => f === 0));
-  w = S.winding(c, 25); assert.equal(w.active, 1); assert.deepEqual(w.fills.slice(0, 3), [20, 5, 0]);
-  w = S.winding(c, 140); assert.equal(w.active, 6); assert.ok(w.fills.every((f) => f === 20));
-  w = S.winding(c, 999); assert.ok(w.fills.every((f) => f === 20), 'tidak melebihi target');
+  let w = S.winding(c, 0); assert.ok(w.fills.every((f) => f === 0));
+  w = S.winding(c, 7.5);
+  assert.deepEqual(w.fills, [7.5, 0, 0, 0, 0, 0, 7.5]);
+  assert.equal(w.wires[0].slot, 0); assert.equal(w.wires[1].slot, 6);
+  assert.equal(w.wires[0].layer, 2); assert.equal(w.wires[1].layer, 1);   // 6 vs 9 lilitan per lapis
+  w = S.winding(c, 999); assert.deepEqual(w.fills, [20, 0, 0, 0, 0, 0, 20], 'tidak melebihi target');
 });
 
-test('posisi kawat selalu di dalam alur aktif', () => {
-  const c = { ...S.DEFAULTS, turnsPerSlot: 30 };
-  for (let n = 0; n <= 210; n += 0.25) {
-    const w = S.winding(c, n), [z0, z1] = S.MODEL.slots[w.active];
-    assert.ok(w.layZ >= z0 && w.layZ <= z1, `n=${n} z=${w.layZ} alur ${w.active}`);
+test('posisi tiap kawat selalu di dalam alurnya', () => {
+  const c = { ...S.DEFAULTS, turnsPerSlot: 60 };
+  for (let n = 0; n <= 70; n += 0.25) {
+    const w = S.winding(c, n);
+    for (const k of w.wires) {
+      const [z0, z1] = S.MODEL.slots[k.slot];
+      assert.ok(k.layZ >= z0 && k.layZ <= z1, `n=${n} ${k.name} z=${k.layZ}`);
+    }
     assert.ok(w.radii.every((r) => r >= S.MODEL.coreR && r <= S.MODEL.flangeR + 1e-9), `n=${n} radius`);
   }
 });
 
-test('panjang kawat cocok dengan penjumlahan per lilitan', () => {
+test('panjang kawat = jumlah kedua kawat', () => {
   const c = { ...S.DEFAULTS, turnsPerSlot: 20, wireD: 0.2 };
-  for (const n of [0, 1, 6, 7, 20, 33.5, 140]) {
-    let brute = 0;
-    for (let i = 0; i < 7; i++) {
-      const f = Math.max(0, Math.min(20, n - i * 20)), tpl = S.turnsPerLayer(c, i);
-      const whole = Math.floor(f);
-      for (let t = 0; t < whole; t++) brute += 2 * Math.PI * (S.MODEL.coreR + c.wireD * (Math.floor(t / tpl) + 0.5));
-      if (f > whole) brute += (f - whole) * 2 * Math.PI * (S.MODEL.coreR + c.wireD * (Math.floor(whole / tpl) + 0.5));
-    }
-    near(S.winding(c, n).lengthM, brute / 1000, 1e-9, `n=${n}`);
+  const per = (tpl, f) => { let a = 0; const whole = Math.floor(f);
+    for (let t = 0; t < whole; t++) a += 2 * Math.PI * (S.MODEL.coreR + c.wireD * (Math.floor(t / tpl) + 0.5));
+    if (f > whole) a += (f - whole) * 2 * Math.PI * (S.MODEL.coreR + c.wireD * (Math.floor(whole / tpl) + 0.5));
+    return a; };
+  for (const n of [0, 1, 6, 7, 9.5, 20]) {
+    const f = Math.min(20, n);
+    near(S.winding(c, n).lengthM, (per(6, f) + per(9, f)) / 1000, 1e-9, `n=${n}`);
   }
-  // alur pertama penuh 20 lilitan: 6+6+6+2 per lapisan
   const one = [6, 6, 6, 2].reduce((a, t, k) => a + t * 2 * Math.PI * (5.89 + 0.2 * (k + 0.5)), 0);
   near(S.slotLength(c, 0, 20), one, 1e-9);
 });
 
-test('simulasi berhenti saat semua alur penuh', () => {
+test('simulasi berhenti saat kedua alur penuh', () => {
   const s = S.create({ turnsPerSlot: 10, rpmIn: 120 }); s.running = true;
   for (let i = 0; i < 200; i++) S.step(s, 0.5);
   const r = S.readout(s);
-  assert.equal(s.done, true); near(r.bobbinTurns, 70, 1e-9);
-  assert.ok(r.winding.fills.every((f) => Math.abs(f - 10) < 1e-9));
+  assert.equal(s.done, true); near(r.bobbinTurns, 10, 1e-9);
+  assert.deepEqual(r.winding.fills.map((f) => +f.toFixed(9)), [10, 0, 0, 0, 0, 0, 10]);
+});
+
+test('klem toggle membuka 90°', () => {
+  near(S.DEFAULTS.clampOpenRad, Math.PI / 2, 1e-12);
 });

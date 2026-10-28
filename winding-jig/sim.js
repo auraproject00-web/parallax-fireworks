@@ -5,6 +5,7 @@
  *   gear bobbin (group_33, di dalam drum group_32) 10 gigi, pusat y = 129,46 mm
  *   jarak sumbu bawah–atas 10,90 mm → modul 1,09 mm; semua rasio 1 : 1
  *   rantai: handwheel → gear bawah → gear atas → bobbin
+ *   dua kawat dililit bersamaan di alur 1 dan 7 (ujung kiri dan kanan bobbin)
  * Satuan: mm, detik, radian, rpm.
  */
 (function (root, factory) {
@@ -23,6 +24,8 @@
     flangeR: 8.39,                    // tepi flens
     // alur lilitan di antara flens, z dalam mm (urut dari belakang ke depan)
     slots: [[-9.51, -8.31], [-7.81, -6.01], [-5.51, -3.71], [-3.21, -2.31], [-1.91, -1.01], [-0.51, 1.29], [1.79, 3.59]],
+    // dua kawat dililit bersamaan, masing-masing di alur ujung bobbin (seperti foto jig)
+    wires: [{ name: 'kiri', slots: [0] }, { name: 'kanan', slots: [6] }],
     zA: 10, zB: 10, zC: 10,
     outerR: 6.3,                      // radius kepala gigi terukur
     handwheelD: 60                    // diameter piringan handwheel
@@ -38,7 +41,7 @@
     targetTurns: 100,                 // putaran handwheel (diturunkan dari lilitan per alur)
     wireD: 0.2,
     turnsPerSlot: 20,
-    clampOpenRad: 0.35
+    clampOpenRad: Math.PI / 2          // klem toggle membuka 90°
   };
 
   function merge(a, b) {
@@ -65,9 +68,11 @@
   function turnsPerLayer(cfg, i) { return Math.max(1, Math.floor(slotWidth(i) / cfg.wireD + 1e-9)); }
   function maxLayers(cfg) { return Math.max(1, Math.floor((MODEL.flangeR - MODEL.coreR) / cfg.wireD + 1e-9)); }
   function slotCapacity(cfg, i) { return turnsPerLayer(cfg, i) * maxLayers(cfg); }
-  /* lilitan per alur dibatasi alur tersempit supaya semua alur muat */
-  function maxTurnsPerSlot(cfg) { var m = Infinity; for (var i = 0; i < MODEL.slots.length; i++) m = Math.min(m, slotCapacity(cfg, i)); return m; }
-  function totalTurns(cfg) { return cfg.turnsPerSlot * MODEL.slots.length; }
+  function usedSlots() { var u = []; MODEL.wires.forEach(function(w){ w.slots.forEach(function(i){ u.push(i); }); }); return u; }
+  /* lilitan per alur dibatasi alur terpakai yang paling kecil kapasitasnya */
+  function maxTurnsPerSlot(cfg) { var m = Infinity; usedSlots().forEach(function(i){ m = Math.min(m, slotCapacity(cfg, i)); }); return m; }
+  /* putaran bobbin sampai selesai: kawat berjalan bersamaan, jadi ditentukan kawat dengan alur terbanyak */
+  function totalTurns(cfg) { var k = 0; MODEL.wires.forEach(function(w){ k = Math.max(k, w.slots.length); }); return cfg.turnsPerSlot * k; }
 
   /* Panjang kawat (mm) untuk f lilitan di alur i: lapisan k punya radius garis tengah coreR + d(k + 1/2). */
   function slotLength(cfg, i, f) {
@@ -76,25 +81,31 @@
     return len;
   }
 
-  /* Kondisi lilitan setelah bobbin berputar nb kali (alur diisi berurutan). */
+  /* Kondisi lilitan setelah bobbin berputar nb kali. Semua kawat berjalan bersamaan;
+   * tiap kawat mengisi alurnya sendiri secara berurutan. */
   function winding(cfg, nb) {
-    var tps = cfg.turnsPerSlot, ns = MODEL.slots.length, d = cfg.wireD;
-    var n = Math.max(0, Math.min(nb, tps * ns)), fills = [], len = 0;
-    for (var i = 0; i < ns; i++) { var f = Math.max(0, Math.min(tps, n - i * tps)); fills.push(f); len += slotLength(cfg, i, f); }
-    var active = n >= tps * ns ? ns - 1 : Math.floor(n / tps + 1e-12);
-    var fa = fills[active], tpl = turnsPerLayer(cfg, active);
-    var layer = fa <= 0 ? 0 : Math.ceil(fa / tpl - 1e-9);                 // lapisan yang sedang diisi (1..)
-    var li = Math.floor(fa / tpl), inLayer = fa - li * tpl;
-    if (inLayer === 0 && li > 0) { li -= 1; inLayer = tpl; }
-    var span = tpl * d, x = Math.min(span, inLayer * d);
-    var pos = (li % 2 === 0) ? x : span - x;                                // bolak-balik tiap lapisan
-    var z0 = MODEL.slots[active][0];
+    var tps = cfg.turnsPerSlot, d = cfg.wireD, total = totalTurns(cfg);
+    var n = Math.max(0, Math.min(nb, total)), fills = MODEL.slots.map(function(){ return 0; }), len = 0;
+    var wires = MODEL.wires.map(function(w){
+      var k = w.slots.length;
+      w.slots.forEach(function(si, j){ fills[si] = Math.max(0, Math.min(tps, n - j * tps)); });
+      var j = n >= tps * k ? k - 1 : Math.min(k - 1, Math.floor(n / tps + 1e-12)), si = w.slots[j];
+      var fa = fills[si], tpl = turnsPerLayer(cfg, si);
+      var layer = fa <= 0 ? 0 : Math.ceil(fa / tpl - 1e-9);
+      var li = Math.floor(fa / tpl), inLayer = fa - li * tpl;
+      if (inLayer === 0 && li > 0) { li -= 1; inLayer = tpl; }
+      var span = tpl * d, x = Math.min(span, inLayer * d);
+      var pos = (li % 2 === 0) ? x : span - x;                            // bolak-balik tiap lapisan
+      return { name: w.name, slot: si, layer: layer, turnsPerLayer: tpl,
+               layZ: MODEL.slots[si][0] + Math.min(slotWidth(si) - d / 2, Math.max(d / 2, pos)) };
+    });
+    fills.forEach(function(f, i){ len += slotLength(cfg, i, f); });
+    var layer = 0; wires.forEach(function(w){ layer = Math.max(layer, w.layer); });
     return {
       fills: fills,
       radii: fills.map(function(f, i){ return MODEL.coreR + d * Math.min(maxLayers(cfg), f / turnsPerLayer(cfg, i)); }),
-      active: active, layer: layer, turnsPerLayer: tpl,
+      wires: wires, layer: layer,
       buildD: 2 * (MODEL.coreR + d * layer),
-      layZ: z0 + Math.min(slotWidth(active) - d / 2, Math.max(d / 2, pos)),
       lengthM: len / 1000
     };
   }
@@ -151,7 +162,7 @@
     MODEL: MODEL, DEFAULTS: DEFAULTS, TAU: TAU,
     moduleOf: moduleOf, pitchRadius: pitchRadius, ratio: ratio, ratioC: ratioC, angleB: angleB, angleC: angleC,
     slotWidth: slotWidth, turnsPerLayer: turnsPerLayer, maxLayers: maxLayers, slotCapacity: slotCapacity,
-    maxTurnsPerSlot: maxTurnsPerSlot, totalTurns: totalTurns, slotLength: slotLength, winding: winding,
+    usedSlots: usedSlots, maxTurnsPerSlot: maxTurnsPerSlot, totalTurns: totalTurns, slotLength: slotLength, winding: winding,
     create: create, step: step, turns: turns, reset: reset, readout: readout
   };
 });

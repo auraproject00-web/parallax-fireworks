@@ -109,7 +109,7 @@ p.note{margin:0;font-size:13px;color:var(--mute);max-width:65ch}
       <div class="eyebrow">Winding jig · JI9G CMG21</div>
       <h1>Simulasi Lilitan</h1>
       <div class="status" id="status" data-s="idle">Siap</div>
-      <div class="count"><b id="o-turns">0</b><span>/ <span id="o-target">140</span> lilitan · 7 alur</span></div>
+      <div class="count"><b id="o-turns">0</b><span>/ <span id="o-target">20</span> lilitan · 2 kawat</span></div>
       <div class="bar"><i id="o-bar"></i></div>
     </div>
 
@@ -122,7 +122,7 @@ p.note{margin:0;font-size:13px;color:var(--mute);max-width:65ch}
       <label class="f" for="i-rpm"><span class="row">Putaran handwheel <output id="o-rpm-in">30 rpm</output></span>
         <input type="range" id="i-rpm" min="5" max="120" step="1" value="30"></label>
       <div class="two">
-        <label class="f" for="i-tps">Lilitan per alur<input type="number" id="i-tps" min="1" max="48" value="20"></label>
+        <label class="f" for="i-tps">Lilitan per alur<input type="number" id="i-tps" min="1" max="72" value="20"></label>
         <label class="f" for="i-wire">Kawat Ø
           <select id="i-wire"><option value="0.1">0,10 mm</option><option value="0.15">0,15 mm</option><option value="0.2" selected>0,20 mm</option><option value="0.3">0,30 mm</option></select></label>
       </div>
@@ -143,10 +143,10 @@ p.note{margin:0;font-size:13px;color:var(--mute);max-width:65ch}
         <div class="cell"><div class="k">V pitch</div><div class="v" id="o-vp">0.0<small>mm/s</small></div></div>
         <div class="cell"><div class="k">V tepi handwheel</div><div class="v" id="o-rim">0<small>mm/s</small></div></div>
         <div class="cell"><div class="k">Klem</div><div class="v" id="o-clamp">Tutup</div></div>
-        <div class="cell"><div class="k">Alur aktif</div><div class="v" id="o-slot">1<small>/ 7</small></div></div>
+        <div class="cell"><div class="k">Alur dililit</div><div class="v" id="o-slot">1 · 7<small>/ 7</small></div></div>
         <div class="cell"><div class="k">Lapisan</div><div class="v" id="o-layer">0<small>/ 12</small></div></div>
         <div class="cell"><div class="k">Ø tumpukan</div><div class="v" id="o-build">11.78<small>mm</small></div></div>
-        <div class="cell"><div class="k">Kawat terpakai</div><div class="v" id="o-len">0.000<small>m</small></div></div>
+        <div class="cell"><div class="k">Kawat terpakai</div><div class="v" id="o-len">0.000<small>m · 2 kawat</small></div></div>
       </div>
     </div>
 
@@ -160,7 +160,7 @@ p.note{margin:0;font-size:13px;color:var(--mute);max-width:65ch}
           <tr><td>Gear bobbin · group_33</td><td>10</td><td>10.0</td><td>129.46</td></tr>
         </tbody>
       </table>
-      <p class="note">Jumlah gigi dan posisi diukur dari vertex model. Rantainya handwheel → gear bawah → gear atas → bobbin, semua 1 : 1. Gear atas berputar berlawanan arah, sehingga bobbin berputar searah handwheel. Poros terkunci selama klem terbuka.</p>
+      <p class="note">Jumlah gigi dan posisi diukur dari vertex model. Rantainya handwheel → gear bawah → gear atas → bobbin, semua 1 : 1. Dua kawat dililit bersamaan di alur ujung kiri (1) dan kanan (7). Gear atas berputar berlawanan arah, sehingga bobbin berputar searah handwheel. Poros terkunci selama klem terbuka.</p>
       <div class="flag" id="flag" hidden></div>
     </div>
   </aside>
@@ -236,6 +236,8 @@ new THREE.ColladaLoader(manager).load('model/jig.xml', function(c){
   info.found.group_32 = !!g('group_32');
   pivots.C = makePivot(sk, ['group_33','group_40','group_42','group_43'].map(g).filter(Boolean), MD.axisC);
   pivots.C.traverse(function(o){ if (o.isMesh) bobbinMeshes.push(o); });
+  // garis tepi sirip bobbin terputus-putus dan berkedip saat berputar, jadi tidak digambar
+  bobbinMeshes.forEach(function(o){ o.children.filter(function(k){ return k.isLineSegments; }).forEach(function(k){ o.remove(k); k.geometry.dispose(); }); });
   buildCoils();
   pivots.K = makePivot(sk, [g('group_62')].filter(Boolean), MD.hinge);
   [pivots.A, pivots.B, pivots.C, pivots.K].forEach(function(p){ p.traverse(function(o){ if (o.isMesh) movingMeshes.push(o); }); });
@@ -311,11 +313,13 @@ function featureEdges(geo, thrDeg){
 }
 
 // ---------------- kawat & kumparan (objek tambahan, model tidak diubah) ----------------
-var coilGroup = null, coils = [], strand = null, FEED = {dx: 40, dy: 10};   // titik datang kawat: dari sisi sisir hitam
+var coilGroup = null, coils = [], strands = [];
+// kawat datang mendatar dari sisi depan (−x, menghadap operator), melewati atas flens lalu masuk alur
+var FEED = {dx: -45, dy: MD.flangeR + 0.6};
 function copperTex(){
-  var c = document.createElement('canvas'); c.width = 64; c.height = 16; var g = c.getContext('2d');
+  var c = document.createElement('canvas'); c.width = 8; c.height = 16; var g = c.getContext('2d');
   var gr = g.createLinearGradient(0, 0, 0, 16); gr.addColorStop(0, '#6e3410'); gr.addColorStop(.5, '#e39150'); gr.addColorStop(1, '#6e3410');
-  g.fillStyle = gr; g.fillRect(0, 0, 64, 16); g.fillStyle = 'rgba(50,20,6,.6)'; g.fillRect(0, 0, 4, 16);   // garis gelap agar putaran terlihat
+  g.fillStyle = gr; g.fillRect(0, 0, 8, 16);     // satu pita per lilitan, rata keliling (tanpa garis memanjang)
   var t = new THREE.CanvasTexture(c); t.wrapS = t.wrapT = THREE.RepeatWrapping; return t;
 }
 function buildCoils(){
@@ -325,8 +329,10 @@ function buildCoils(){
     var mat = new THREE.MeshPhongMaterial({map: copperTex(), shininess: 80, specular: 0x8a4a22});
     var m = new THREE.Mesh(geo, mat); m.position.z = (sl[0] + sl[1]) / 2; m.visible = false; coilGroup.add(m); coils.push(m);
   });
-  strand = new THREE.Mesh(new THREE.CylinderGeometry(1, 1, 1, 8), new THREE.MeshPhongMaterial({color: 0xc8733a, shininess: 80}));
-  scene.add(strand);
+  MD.wires.forEach(function(){
+    var st = new THREE.Mesh(new THREE.CylinderGeometry(1, 1, 1, 8), new THREE.MeshPhongMaterial({color: 0xc8733a, shininess: 80}));
+    scene.add(st); strands.push(st);
+  });
 }
 var _a = new THREE.Vector3(), _b = new THREE.Vector3(), _up = new THREE.Vector3(0, 1, 0);
 function poseCoils(r){
@@ -334,18 +340,21 @@ function poseCoils(r){
   var w = r.winding, d = sim.cfg.wireD;
   coilGroup.rotation.z = r.thetaC;
   coils.forEach(function(m, i){
-    var f = w.fills[i]; m.visible = f > 0.02;
+    m.visible = w.fills[i] > 0.02;
     var R = w.radii[i]; m.scale.set(R, R, 1);
     m.material.map.repeat.set(1, S.turnsPerLayer(sim.cfg, i));
   });
-  // kawat dari titik datang, menyinggung kumparan aktif dari atas
-  var R = Math.max(MD.coreR, w.radii[w.active]) + d / 2, fx = FEED.dx, fy = FEED.dy, D = Math.hypot(fx, fy);
-  var ang = Math.atan2(fy, fx) + Math.acos(Math.min(1, R / D));
-  _a.set(MD.axisC.x + fx, MD.axisC.y + fy, w.layZ);
-  _b.set(MD.axisC.x + R * Math.cos(ang), MD.axisC.y + R * Math.sin(ang), w.layZ);
-  var len = _a.distanceTo(_b), th = Math.max(0.08, d / 2);
-  strand.position.copy(_a).add(_b).multiplyScalar(0.5); strand.scale.set(th, len, th);
-  strand.quaternion.setFromUnitVectors(_up, _b.clone().sub(_a).normalize());
+  // tiap kawat menyinggung kumparannya dari atas, datang mendatar dari depan
+  w.wires.forEach(function(k, j){
+    var R = Math.max(MD.coreR, w.radii[k.slot]) + d / 2, fx = FEED.dx, fy = FEED.dy, D = Math.hypot(fx, fy);
+    var base = Math.atan2(fy, fx), da = Math.acos(Math.min(1, R / D));
+    var ang = Math.sin(base + da) > Math.sin(base - da) ? base + da : base - da;   // titik singgung sisi atas
+    _a.set(MD.axisC.x + fx, MD.axisC.y + fy, k.layZ);
+    _b.set(MD.axisC.x + R * Math.cos(ang), MD.axisC.y + R * Math.sin(ang), k.layZ);
+    var st = strands[j], len = _a.distanceTo(_b), th = Math.max(0.08, d / 2);
+    st.position.copy(_a).add(_b).multiplyScalar(0.5); st.scale.set(th, len, th);
+    st.quaternion.setFromUnitVectors(_up, _b.clone().sub(_a).normalize());
+  });
 }
 
 function makePivot(parent, nodes, axisPt){
@@ -385,7 +394,7 @@ var VIEWS = {
   a:    {dir:[0.55,0.62,1],   tgt:[38,105,-8],  dist:300},
   b:    {dir:[-0.6,0.55,-1],  tgt:[38,105,-25], dist:300},
   gear: {dir:[0.5,0.3,1],     tgt:[30,113.5,6], dist:80, xray:true},
-  bobbin: {dir:[-1,0.55,0.2], tgt:[29.6,129.5,-3], dist:62, xray:'bobbin'},
+  bobbin: {dir:[-0.75,0.6,0.55], tgt:[20,130,-3], dist:80, xray:'bobbin'},
   full: {dir:[1,0.7,0.9],     tgt:[24,60,-95],  dist:620}
 };
 var camAnim = null;
@@ -480,8 +489,8 @@ function hud(force){
   var r = S.readout(sim);
   var w = r.winding, total = S.totalTurns(sim.cfg);
   $('o-turns').textContent = Math.floor(r.bobbinTurns + 1e-9); $('o-target').textContent = total;
-  setV('o-slot', w.active + 1, '/ ' + MD.slots.length); setV('o-layer', w.layer, '/ ' + S.maxLayers(sim.cfg));
-  setV('o-build', w.buildD.toFixed(2), 'mm'); setV('o-len', w.lengthM.toFixed(3), 'm');
+  setV('o-slot', w.wires.map(function(k){ return k.slot + 1; }).join(' · '), '/ ' + MD.slots.length); setV('o-layer', w.layer, '/ ' + S.maxLayers(sim.cfg));
+  setV('o-build', w.buildD.toFixed(2), 'mm'); setV('o-len', w.lengthM.toFixed(3), 'm · 2 kawat');
   $('o-bar').style.width = (Math.min(1, r.progress) * 100).toFixed(1) + '%';
   setV('o-rpmA', r.rpmA.toFixed(0), 'rpm'); setV('o-rpmB', r.rpmB.toFixed(0), 'rpm'); setV('o-rpmC', r.rpmC.toFixed(0), 'rpm');
   $('o-bob').textContent = r.bobbinTurns.toFixed(1);
@@ -498,7 +507,7 @@ function pose(dt){
   spin(pivots.A, r.thetaA); spin(pivots.B, r.thetaB); spin(pivots.C, r.thetaC);
   poseCoils(r);
   var target = sim.clampClosed ? 0 : -sim.cfg.clampOpenRad;
-  clampAngle += (target - clampAngle) * (reduceMotion ? 1 : Math.min(1, dt * 8));
+  clampAngle += (target - clampAngle) * (reduceMotion ? 1 : Math.min(1, dt * 5));
   spin(pivots.K, clampAngle);
   var tooth = Math.floor(r.thetaA / (TAU / sim.cfg.zA));
   if (tooth !== lastTooth) { if (r.rpmA > 0 && r.meshHz < 30) Snd.tooth(); lastTooth = tooth; }
@@ -526,8 +535,10 @@ window.__jig = {
   start: function(){ if (!sim.running) toggleRun(); },
   setView: function(n){ setView(n, true); pose(1); renderer.render(scene, camera); },
   toggleClamp: toggleClamp,
-  coilState: function(){ var tip = new THREE.Vector3(0, 0.5, 0).applyMatrix4(strand.matrixWorld);   // ujung di kumparan
-    return { visible: coils.map(function(m){ return m.visible; }), radius: coils.map(function(m){ return m.scale.x; }), rot: coilGroup.rotation.z, strandEnd: tip.toArray() }; },
+  coilState: function(){
+    var ends = strands.map(function(st){ return new THREE.Vector3(0, 0.5, 0).applyMatrix4(st.matrixWorld).toArray(); });     // ujung di kumparan
+    var feeds = strands.map(function(st){ return new THREE.Vector3(0, -0.5, 0).applyMatrix4(st.matrixWorld).toArray(); });   // ujung datang
+    return { visible: coils.map(function(m){ return m.visible; }), radius: coils.map(function(m){ return m.scale.x; }), rot: coilGroup.rotation.z, strandEnds: ends, strandFeeds: feeds, lines: bobbinMeshes.reduce(function(a, o){ return a + o.children.filter(function(k){ return k.isLineSegments; }).length; }, 0) }; },
   liveBox: function(){ model.updateMatrixWorld(true); var b = new THREE.Box3().setFromObject(model); return {min: b.min.toArray(), max: b.max.toArray()}; },
   pivotAngles: function(){ var q = function(p){ return p ? 2 * Math.atan2(new THREE.Vector3(p.quaternion.x, p.quaternion.y, p.quaternion.z).dot(p.userData.axis), p.quaternion.w) : null; };
     return {A: q(pivots.A), B: q(pivots.B), C: q(pivots.C), K: q(pivots.K)}; },
