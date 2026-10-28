@@ -55,7 +55,7 @@ const wrap = (a) => Math.atan2(Math.sin(a), Math.cos(a));
   await run({ width: 1366, height: 820 }, 'desktop', async (page) => {
     const info = await page.evaluate(() => window.__jig.info());
     check('handwheel kaca ditemukan (2 mesh)', info.found.handwheelMeshes === 2, info.found.handwheelMeshes);
-    for (const g of ['group_57', 'group_60', 'group_28', 'group_30', 'group_62']) check(`part ${g} ditemukan`, info.found[g] === true);
+    for (const g of ['group_57', 'group_60', 'group_28', 'group_30', 'group_32', 'group_62']) check(`part ${g} ditemukan`, info.found[g] === true);
     const size = info.box.max.map((v, i) => v - info.box.min[i]);
     const ctr = info.box.max.map((v, i) => (v + info.box.min[i]) / 2);
     check('ukuran model sama dengan file mentah', size.every((v, i) => Math.abs(v - RAW.size[i]) < 0.15), size.map((v) => v.toFixed(1)).join(' × '));
@@ -63,7 +63,8 @@ const wrap = (a) => Math.atan2(Math.sin(a), Math.cos(a));
     const ax = await page.evaluate(() => window.__jig.axisWorld());
     check('poros A di (29,67; 108,12) sepanjang Z', Math.abs(ax.A.pos[0] - 29.67) < 0.01 && Math.abs(ax.A.pos[1] - 108.12) < 0.01 && Math.abs(Math.abs(ax.A.dir[2]) - 1) < 1e-3, JSON.stringify(ax.A));
     check('poros B di (29,67; 119,02)', Math.abs(ax.B.pos[1] - 119.02) < 0.01, JSON.stringify(ax.B));
-    check('engsel klem di (56,5; 123,2)', Math.abs(ax.C.pos[0] - 56.5) < 0.01 && Math.abs(ax.C.pos[1] - 123.2) < 0.01, JSON.stringify(ax.C));
+    check('poros bobbin di (29,62; 129,46)', Math.abs(ax.C.pos[0] - 29.62) < 0.01 && Math.abs(ax.C.pos[1] - 129.46) < 0.01, JSON.stringify(ax.C));
+    check('engsel klem di (56,5; 123,2)', Math.abs(ax.K.pos[0] - 56.5) < 0.01 && Math.abs(ax.K.pos[1] - 123.2) < 0.01, JSON.stringify(ax.K));
     console.log('     tekstur pengganti:', info.fallbacks.join(', ') || '-');
 
     const v = await page.evaluate(() => {
@@ -75,7 +76,7 @@ const wrap = (a) => Math.atan2(Math.sin(a), Math.cos(a));
     check('kanvas 3D tergambar', v > 40, v + ' warna');
     await page.screenshot({ path: path.join(OUT, '01-tampak-a.png') });
 
-    await page.evaluate(() => window.__jig.start());
+    await page.evaluate(() => { window.__jig.frozen = true; window.__jig.start(); });
     const r = await page.evaluate(() => window.__jig.advance(20.25));   // 30 rpm → 10,125 putaran
     const h = await hud(page);
     check('putaran = 10 setelah 20,25 s @30 rpm', h.turns === '10', h.turns);
@@ -89,7 +90,28 @@ const wrap = (a) => Math.atan2(Math.sin(a), Math.cos(a));
     const pa = await page.evaluate(() => window.__jig.pivotAngles());
     check('sudut poros A = sim', Math.abs(wrap(pa.A - r.thetaA)) < 1e-4, `${pa.A.toFixed(4)} vs ${wrap(r.thetaA).toFixed(4)}`);
     check('gear atas berlawanan arah', Math.abs(wrap(pa.B + pa.A)) < 1e-4, `${pa.B.toFixed(4)}`);
+    check('bobbin berputar searah handwheel', Math.abs(wrap(pa.C - pa.A)) < 1e-4 && Math.abs(pa.C) > 0.1, `${pa.C.toFixed(4)}`);
+    const hb = await page.evaluate(() => ({ rpmC: document.getElementById('o-rpmC').textContent, bob: document.getElementById('o-bob').textContent }));
+    check('rpm bobbin 30', num(hb.rpmC) === 30, hb.rpmC);
+    check('putaran bobbin 10.1', hb.bob === '10.1', hb.bob);
+    // lilitan setelah 10,125 putaran bobbin, kawat 0,2 mm, 20 lilitan per alur
+    const cfg = S.create().cfg, wexp = S.winding(cfg, 10.125);
+    const hw = await page.evaluate(() => { const t = (id) => document.getElementById(id).textContent.trim(); return { slot: t('o-slot'), layer: t('o-layer'), build: t('o-build'), len: t('o-len') }; });
+    check('alur aktif 1', num(hw.slot) === 1, hw.slot);
+    check('lapisan 2 (6 lilitan per lapis)', num(hw.layer) === wexp.layer && wexp.layer === 2, hw.layer);
+    check('Ø tumpukan = sim', Math.abs(num(hw.build) - wexp.buildD) < 0.006, `${hw.build} vs ${wexp.buildD.toFixed(2)}`);
+    check('kawat terpakai = sim', Math.abs(num(hw.len) - wexp.lengthM) < 0.0006, `${hw.len} vs ${wexp.lengthM.toFixed(3)}`);
+    const cs = await page.evaluate(() => window.__jig.coilState());
+    check('hanya kumparan alur 1 terlihat', cs.visible[0] && cs.visible.slice(1).every((v) => !v), JSON.stringify(cs.visible));
+    check('radius kumparan = sim', Math.abs(cs.radius[0] - wexp.radii[0]) < 1e-6, cs.radius[0].toFixed(3));
+    const [z0, z1] = S.MODEL.slots[0];
+    check('kawat masuk di dalam alur 1', cs.strandEnd[2] >= z0 && cs.strandEnd[2] <= z1, cs.strandEnd[2].toFixed(3));
+    check('ujung kawat menempel di kumparan', Math.abs(Math.hypot(cs.strandEnd[0] - 29.62, cs.strandEnd[1] - 129.46) - (wexp.radii[0] + 0.1)) < 0.01);
+    check('kumparan ikut berputar dengan bobbin', Math.abs(wrap(cs.rot - r.thetaC)) < 1e-6);
     await page.screenshot({ path: path.join(OUT, '02-berputar.png') });
+    await page.evaluate(() => window.__jig.setView('bobbin'));
+    await page.screenshot({ path: path.join(OUT, '02b-bobbin-melilit.png') });
+    await page.evaluate(() => window.__jig.setView('a'));
 
     await page.evaluate(() => window.__jig.setView('gear'));
     await page.screenshot({ path: path.join(OUT, '03-gear-tembus.png') });
@@ -104,13 +126,17 @@ const wrap = (a) => Math.atan2(Math.sin(a), Math.cos(a));
     const bs = back.max.map((v, i) => v - back.min[i]);
     check('ukuran model sama setelah 3 putaran penuh', bs.every((v, i) => Math.abs(v - RAW.size[i]) < 0.15), bs.map((v) => v.toFixed(1)).join(' × '));
 
-    // berhenti di target
-    await page.fill('#i-target', '12'); await page.dispatchEvent('#i-target', 'change');
-    await page.evaluate(() => { const s = window.__jig.sim; s.done = false; s.running = true; });
-    await page.evaluate(() => window.__jig.advance(30));
+    // berhenti saat 7 alur × 5 lilitan penuh
+    await page.fill('#i-tps', '5'); await page.dispatchEvent('#i-tps', 'change');
+    await page.evaluate(() => { window.__jig.sim.running = true; });
+    await page.evaluate(() => window.__jig.advance(120));
     const d = await hud(page);
-    check('berhenti di 12', d.turns === '12', d.turns);
+    check('berhenti di 35 lilitan (7 × 5)', d.turns === '35', d.turns);
     check('status Selesai', d.status === 'Selesai', d.status);
+    const wfull = await page.evaluate(() => window.__jig.coilState());
+    check('ketujuh kumparan terlihat', wfull.visible.filter(Boolean).length === 7, JSON.stringify(wfull.visible));
+    await page.evaluate(() => window.__jig.setView('bobbin'));
+    await page.screenshot({ path: path.join(OUT, '05b-bobbin-penuh.png') });
 
     // interlock klem + engsel berputar
     await page.click('#b-reset');
@@ -120,7 +146,7 @@ const wrap = (a) => Math.atan2(Math.sin(a), Math.cos(a));
     const k = await hud(page);
     check('klem terbuka: putaran tetap 0', k.turns === '0', k.turns);
     check('status Klem terbuka', k.status === 'Klem terbuka', k.status);
-    const pc = await page.evaluate(() => window.__jig.pivotAngles().C);
+    const pc = await page.evaluate(() => window.__jig.pivotAngles().K);
     check('klem membuka 0,35 rad', Math.abs(pc + 0.35) < 0.01, pc.toFixed(3));
     await page.evaluate(() => window.__jig.setView('a'));
     await page.screenshot({ path: path.join(OUT, '06-klem-buka.png') });

@@ -4,6 +4,8 @@ Simulasi 3D interaktif jig winding JI9G CMG21. Model 3D dimuat langsung dari exp
 
 - Handwheel kaca Ø60, hub, poros, dan gear bawah 10T (group_28) berputar di sumbu y = 108,12 mm.
 - Gear atas 10T (group_30) di y = 119,02 mm berputar berlawanan arah, rasio 1:1, modul 1,09 mm (dari jarak sumbu 10,90 mm).
+- Gear bobbin 10T (group_33) di y = 129,46 mm digerakkan gear atas, jadi bobbin berputar searah handwheel. Braket group_41 tetap diam.
+- Kawat dililit ke 7 alur bobbin (inti r 5,89, flens r 8,39, lebar alur 0,9–1,8 mm) satu per satu, lapis demi lapis. Kumparan dan helai kawat adalah objek tambahan; geometri model tidak diubah.
 - Klem krem dan gagang knurling (group_62) berengsel di pin group_65; poros terkunci saat klem terbuka.
 
 ## File
