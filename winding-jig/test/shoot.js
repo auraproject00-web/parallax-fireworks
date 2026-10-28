@@ -103,12 +103,15 @@ const wrap = (a) => Math.atan2(Math.sin(a), Math.cos(a));
     check('kawat terpakai (2 kawat) = sim', Math.abs(num(hw.len) - wexp.lengthM) < 0.0006, `${hw.len} vs ${wexp.lengthM.toFixed(3)}`);
     const cs = await page.evaluate(() => window.__jig.coilState());
     check('kumparan hanya di alur 1 dan 7', cs.visible[0] && cs.visible[6] && cs.visible.slice(1, 6).every((v) => !v), JSON.stringify(cs.visible));
-    check('radius kumparan = sim', Math.abs(cs.radius[0] - wexp.radii[0]) < 1e-6 && Math.abs(cs.radius[6] - wexp.radii[6]) < 1e-6, `${cs.radius[0].toFixed(3)} / ${cs.radius[6].toFixed(3)}`);
+    check('tabung kawat Ø = Ø kawat', cs.tubeR[0] === cfg.wireD / 2 && cs.tubeR[6] === cfg.wireD / 2, cs.tubeR[0]);
+    check('lilitan terlihat = lilitan sim (±1/96)', [0, 6].every((i) => Math.abs(cs.shownTurns[i] - wexp.fills[i]) <= 1 / 96 + 1e-9), cs.shownTurns.filter(Boolean).map((v) => v.toFixed(3)).join(' / '));
+    cs.tubeEnds.forEach((e, i) => { if (!e) return; const se = cs.strandEnds[wexp.wires.findIndex((k) => k.slot === i)];
+      check(`kawat masuk tersambung ke gulungan alur ${i + 1}`, Math.hypot(e[0] - se[0], e[1] - se[1], e[2] - se[2]) < 1e-3, Math.hypot(e[0] - se[0], e[1] - se[1], e[2] - se[2]).toExponential(1)); });
     check('ada 2 helai kawat', cs.strandEnds.length === 2);
     cs.strandEnds.forEach((e, j) => {
       const sl = S.MODEL.slots[wexp.wires[j].slot], f = cs.strandFeeds[j];
       check(`kawat ${j + 1} masuk di alur ${wexp.wires[j].slot + 1}`, e[2] >= sl[0] && e[2] <= sl[1], e[2].toFixed(3));
-      check(`kawat ${j + 1} menempel di kumparan`, Math.abs(Math.hypot(e[0] - 29.62, e[1] - 129.46) - (wexp.radii[wexp.wires[j].slot] + 0.1)) < 0.01);
+      check(`kawat ${j + 1} menempel di gulungan (r = sim)`, Math.abs(Math.hypot(e[0] - 29.62, e[1] - 129.46) - wexp.wires[j].r) < 0.01, Math.hypot(e[0] - 29.62, e[1] - 129.46).toFixed(3));
       check(`kawat ${j + 1} datang mendatar dari depan (−x)`, e[0] - f[0] > 30 && Math.abs(f[1] - e[1]) < 0.25 * (e[0] - f[0]), `dx ${(f[0] - e[0]).toFixed(1)} dy ${(f[1] - e[1]).toFixed(1)}`);
       check(`kawat ${j + 1} menyinggung sisi atas kumparan`, e[1] > 129.46, e[1].toFixed(2));
     });

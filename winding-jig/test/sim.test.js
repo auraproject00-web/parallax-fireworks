@@ -197,3 +197,58 @@ test('arah readout mengikuti arah penggerak', () => {
   assert.ok(r.thetaA < 0 && r.thetaB > 0 && r.thetaC < 0, JSON.stringify([r.thetaA, r.thetaB, r.thetaC]));
   near(r.thetaC, r.thetaA, 1e-12);
 });
+
+// ---------- jalur kawat tergulung ----------
+test('jalur kawat kontinu (tidak melompat)', () => {
+  const c = S.DEFAULTS;
+  for (const si of [0, 6]) {
+    const cap = S.slotCapacity(c, si); let prev = S.wirePath(c, si, 0);
+    for (let s = 0.01; s <= cap; s += 0.01) {
+      const p = S.wirePath(c, si, s);
+      assert.ok(Math.abs(p.z - prev.z) <= c.wireD * 0.0101 + 1e-12, `alur ${si} s=${s.toFixed(2)} Δz=${p.z - prev.z}`);
+      assert.ok(Math.abs(p.r - prev.r) <= c.wireD * 0.016, `alur ${si} s=${s.toFixed(2)} Δr=${p.r - prev.r}`);
+      prev = p;
+    }
+  }
+});
+
+test('lilitan bersebelahan berjarak tepat satu diameter kawat', () => {
+  const c = S.DEFAULTS, d = c.wireD;
+  for (const si of [0, 6]) {
+    const tpl = S.turnsPerLayer(c, si);
+    for (let li = 0; li < 3; li++) for (let i = 0; i < tpl - 2; i++) {
+      const a = S.wirePath(c, si, li * tpl + i), b = S.wirePath(c, si, li * tpl + i + 1);
+      near(Math.abs(b.z - a.z), d, 1e-9, `alur ${si} lapis ${li} lilitan ${i}`);
+      near(b.r, a.r, 1e-12, 'satu lapis = radius sama');
+    }
+  }
+});
+
+test('lapisan berganti arah dan naik satu diameter', () => {
+  const c = S.DEFAULTS, d = c.wireD, tpl = S.turnsPerLayer(c, 0);
+  const l0a = S.wirePath(c, 0, 0.5), l0b = S.wirePath(c, 0, tpl - 1.5);
+  const l1a = S.wirePath(c, 0, tpl + 0.5), l1b = S.wirePath(c, 0, 2 * tpl - 1.5);
+  assert.ok(l0b.z > l0a.z, 'lapis 1 maju'); assert.ok(l1b.z < l1a.z, 'lapis 2 mundur');
+  near(l1a.r - l0a.r, d, 1e-9);
+});
+
+test('kawat tidak keluar alur dan tidak melewati flens', () => {
+  const c = S.DEFAULTS, d = c.wireD;
+  for (const si of [0, 6]) {
+    const [z0, z1] = S.MODEL.slots[si], cap = S.slotCapacity(c, si);
+    for (let s = 0; s <= cap; s += 0.05) {
+      const p = S.wirePath(c, si, s);
+      assert.ok(p.z - d / 2 >= z0 - 1e-9 && p.z + d / 2 <= z1 + 1e-9, `z ${p.z}`);
+      assert.ok(p.r - d / 2 >= S.MODEL.coreR - 1e-9 && p.r + d / 2 <= S.MODEL.flangeR + 1e-9, `r ${p.r}`);
+    }
+  }
+});
+
+test('ujung gulungan tepat di titik singgung kawat masuk', () => {
+  const c = S.DEFAULTS;
+  for (const s of [0, 3.3, 12.7, 20]) {
+    const p = S.wirePath(c, 6, s), world = p.phi + c.driveDir * 2 * Math.PI * s;   // bobbin sudah berputar s kali
+    const T = S.wireTangent(p.r);
+    near(Math.cos(world), T.x / p.r, 1e-12); near(Math.sin(world), T.y / p.r, 1e-12);
+  }
+});

@@ -8,6 +8,7 @@ Simulasi 3D interaktif jig winding JI9G CMG21. Model 3D dimuat langsung dari exp
 - Dua kawat dililit bersamaan di alur ujung kiri (1) dan kanan (7) dari 7 alur bobbin (inti r 5,89, flens r 8,39), lapis demi lapis. Keduanya datang mendatar dari sisi depan. Kumparan dan helai kawat adalah objek tambahan; geometri model tidak diubah.
 - Klem toggle krem dan gagang knurling (group_62) membuka 90° di pin group_65; poros terkunci saat klem terbuka.
 - Garis tepi tidak digambar pada bobbin supaya tidak berkedip saat berputar.
+- Kawat tergulung digambar sebagai tabung Ø kawat yang mengikuti jalur spiral sebenarnya (`wirePath` di `sim.js`): tiap lilitan maju satu diameter, naik satu lapis di ujung alur lalu berbalik arah, dan ujungnya selalu tersambung dengan kawat yang datang.
 
 ## File
 

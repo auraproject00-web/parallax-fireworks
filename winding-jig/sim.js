@@ -95,12 +95,8 @@
       var j = n >= tps * k ? k - 1 : Math.min(k - 1, Math.floor(n / tps + 1e-12)), si = w.slots[j];
       var fa = fills[si], tpl = turnsPerLayer(cfg, si);
       var layer = fa <= 0 ? 0 : Math.ceil(fa / tpl - 1e-9);
-      var li = Math.floor(fa / tpl), inLayer = fa - li * tpl;
-      if (inLayer === 0 && li > 0) { li -= 1; inLayer = tpl; }
-      var span = tpl * d, x = Math.min(span, inLayer * d);
-      var pos = (li % 2 === 0) ? x : span - x;                            // bolak-balik tiap lapisan
-      return { name: w.name, slot: si, layer: layer, turnsPerLayer: tpl,
-               layZ: MODEL.slots[si][0] + Math.min(slotWidth(si) - d / 2, Math.max(d / 2, pos)) };
+      var wp = wirePath(cfg, si, fa);
+      return { name: w.name, slot: si, layer: layer, turnsPerLayer: tpl, fill: fa, layZ: wp.z, r: wp.r };
     });
     fills.forEach(function(f, i){ len += slotLength(cfg, i, f); });
     var layer = 0; wires.forEach(function(w){ layer = Math.max(layer, w.layer); });
@@ -118,6 +114,24 @@
     var f = MODEL.feed, D = Math.hypot(f.dx, f.dy), base = Math.atan2(f.dy, f.dx), da = Math.acos(Math.min(1, R / D));
     var ang = Math.sin(base + da) > Math.sin(base - da) ? base + da : base - da;
     return { x: R * Math.cos(ang), y: R * Math.sin(ang) };
+  }
+
+  /* Jalur garis tengah kawat di alur si setelah bobbin berputar s kali (kontinu).
+   * Tiap lilitan maju tepat satu diameter kawat. Lilitan terakhir tiap lapisan tidak bergeser,
+   * melainkan naik satu lapisan (smoothstep), lalu lapisan berikutnya berjalan berlawanan arah.
+   * phi = sudut di kerangka bobbin, dipilih agar ujung s selalu berada di titik singgung kawat. */
+  function wirePath(cfg, si, s) {
+    var tpl = turnsPerLayer(cfg, si), d = cfg.wireD, ml = maxLayers(cfg);
+    s = Math.max(0, Math.min(s, tpl * ml));
+    var li = Math.min(ml - 1, Math.floor(s / tpl)), u = s - li * tpl;          // u ∈ [0, tpl]
+    var x = Math.min(u, tpl - 1) * d;                                           // posisi lilitan di lapisan
+    var off = (slotWidth(si) - (tpl - 1) * d) / 2;                              // lilitan dipusatkan di alur
+    var z = MODEL.slots[si][0] + off + (li % 2 === 0 ? x : (tpl - 1) * d - x);
+    var c = li < ml - 1 ? Math.max(0, Math.min(1, u - (tpl - 1))) : 0;
+    c = c * c * (3 - 2 * c);
+    var r = MODEL.coreR + d * (li + 0.5 + c);
+    var T = wireTangent(r);
+    return { z: z, r: r, phi: Math.atan2(T.y, T.x) - cfg.driveDir * TAU * s };
   }
 
   function create(opts) {
@@ -172,7 +186,7 @@
     MODEL: MODEL, DEFAULTS: DEFAULTS, TAU: TAU,
     moduleOf: moduleOf, pitchRadius: pitchRadius, ratio: ratio, ratioC: ratioC, angleB: angleB, angleC: angleC,
     slotWidth: slotWidth, turnsPerLayer: turnsPerLayer, maxLayers: maxLayers, slotCapacity: slotCapacity,
-    wireTangent: wireTangent, usedSlots: usedSlots, maxTurnsPerSlot: maxTurnsPerSlot, totalTurns: totalTurns, slotLength: slotLength, winding: winding,
+    wireTangent: wireTangent, wirePath: wirePath, usedSlots: usedSlots, maxTurnsPerSlot: maxTurnsPerSlot, totalTurns: totalTurns, slotLength: slotLength, winding: winding,
     create: create, step: step, turns: turns, reset: reset, readout: readout
   };
 });
