@@ -109,7 +109,7 @@ p.note{margin:0;font-size:13px;color:var(--mute);max-width:65ch}
       <div class="eyebrow">Winding jig · JI9G CMG21</div>
       <h1>Simulasi Lilitan</h1>
       <div class="status" id="status" data-s="idle">Siap</div>
-      <div class="count"><b id="o-turns">0</b><span>/ <span id="o-target">20</span> lilitan · 2 kawat</span></div>
+      <div class="count"><b id="o-turns">0</b><span>/ <span id="o-target">60</span> lilitan per kawat</span></div>
       <div class="bar"><i id="o-bar"></i></div>
     </div>
 
@@ -122,11 +122,15 @@ p.note{margin:0;font-size:13px;color:var(--mute);max-width:65ch}
       <label class="f" for="i-rpm"><span class="row">Putaran handwheel <output id="o-rpm-in">30 rpm</output></span>
         <input type="range" id="i-rpm" min="5" max="120" step="1" value="30"></label>
       <div class="two">
-        <label class="f" for="i-tps">Lilitan per alur<input type="number" id="i-tps" min="1" max="72" value="20"></label>
+        <label class="f" for="i-tps">Lilitan per alur<input type="number" id="i-tps" min="1" max="48" value="20"></label>
         <label class="f" for="i-wire">Kawat Ø
           <select id="i-wire"><option value="0.1">0,10 mm</option><option value="0.15">0,15 mm</option><option value="0.2" selected>0,20 mm</option><option value="0.3">0,30 mm</option></select></label>
       </div>
-      <button class="b" id="b-sound" aria-pressed="false">Suara: mati</button>
+      <div class="two">
+        <label class="f" for="i-spw">Alur per kawat
+          <select id="i-spw"><option value="1">1 alur</option><option value="2">2 alur</option><option value="3" selected>3 alur</option></select></label>
+        <button class="b" id="b-sound" aria-pressed="false">Suara: mati</button>
+      </div>
       <label class="toggle" for="i-xray"><input type="checkbox" id="i-xray"> Tembus pandang (lihat gear dan bobbin)</label>
     </div>
 
@@ -160,7 +164,7 @@ p.note{margin:0;font-size:13px;color:var(--mute);max-width:65ch}
           <tr><td>Gear bobbin · group_33</td><td>10</td><td>10.0</td><td>129.46</td></tr>
         </tbody>
       </table>
-      <p class="note">Jumlah gigi dan posisi diukur dari vertex model. Rantainya handwheel → gear bawah → gear atas → bobbin, semua 1 : 1. Dua kawat dililit bersamaan di alur ujung kiri (1) dan kanan (7). Gear atas berputar berlawanan arah, sehingga bobbin berputar searah handwheel. Poros terkunci selama klem terbuka.</p>
+      <p class="note">Jumlah gigi dan posisi diukur dari vertex model. Rantainya handwheel → gear bawah → gear atas → bobbin, semua 1 : 1. Dua kawat dililit bersamaan: kiri alur 1→2→3, kanan 7→6→5. Setelah satu alur penuh, kawat pindah ke alur berikutnya lewat coakan di flens. Gear atas berputar berlawanan arah, sehingga bobbin berputar searah handwheel. Poros terkunci selama klem terbuka.</p>
       <div class="flag" id="flag" hidden></div>
     </div>
   </aside>
@@ -246,6 +250,7 @@ new THREE.ColladaLoader(manager).load('model/jig.xml', function(c){
   ['group_28','group_30','group_33'].forEach(function(n){ var o = sk.getObjectByName(n); if (o) o.traverse(function(k){ if (k.isMesh) gearMeshes.push(k); }); });
   // material bobbin & gear dipisah supaya tidak ikut pudar saat tembus pandang (warna tetap sama)
   gearMeshes.concat(bobbinMeshes).filter(function(o, i, all){ return all.indexOf(o) === i; }).forEach(function(o){ o.material = Array.isArray(o.material) ? o.material.map(function(m){ return m.clone(); }) : o.material.clone(); });
+  installNotchShader(); rebuildNotches();
 
   var box = new THREE.Box3().setFromObject(wrap);
   info.box = {min: box.min.toArray(), max: box.max.toArray()};
@@ -313,13 +318,14 @@ function featureEdges(geo, thrDeg){
 }
 
 // ---------------- kawat & kumparan (objek tambahan, model tidak diubah) ----------------
-var coilGroup = null, coils = [], strands = [], wireMat = null;
+var coilGroup = null, coils = [], strands = [], wireMat = null, notchGroup = null, notchU = null;
 var FEED = MD.feed, SEG_PER_TURN = 96, RADIAL = 8;
-/* Kurva garis tengah kawat tergulung, parameter t ∈ [0,1] ↔ s ∈ [0, sMax] lilitan (bukan panjang busur,
- * supaya drawRange bisa membuka kawat persis per lilitan). */
+/* Kurva garis tengah satu helai kawat (semua alurnya + perpindahan lewat coakan),
+ * parameter t ∈ [0,1] ↔ s ∈ [0, sMax] putaran bobbin (bukan panjang busur, supaya drawRange
+ * bisa membuka kawat tepat sejauh bobbin berputar). */
 class WireCurve extends THREE.Curve {
-  constructor(cfg, si, sMax){ super(); this.cfg = cfg; this.si = si; this.sMax = sMax; }
-  getPoint(t, target){ var p = S.wirePath(this.cfg, this.si, t * this.sMax); return (target || new THREE.Vector3()).set(p.r * Math.cos(p.phi), p.r * Math.sin(p.phi), p.z); }
+  constructor(cfg, wi){ super(); this.cfg = cfg; this.wi = wi; this.segs = S.schedule(cfg, wi); this.sMax = this.segs[this.segs.length - 1].s1; }
+  getPoint(t, target){ var p = S.wirePathW(this.cfg, this.wi, t * this.sMax, this.segs); return (target || new THREE.Vector3()).set(p.r * Math.cos(p.phi), p.r * Math.sin(p.phi), p.z); }
   getPointAt(t, target){ return this.getPoint(t, target); }
   getTangentAt(t, target){ return this.getTangent(t, target); }
 }
@@ -332,33 +338,78 @@ function buildCoils(){
   });
   rebuildCoils();
 }
-/* Bangun ulang tabung kawat tiap alur terpakai (saat mulai atau setelan berubah). */
+/* Bangun ulang tabung kawat tiap helai (saat mulai atau setelan berubah). */
 function rebuildCoils(){
   if (!coilGroup) return;
-  coils.forEach(function(m){ if (m) { coilGroup.remove(m); m.geometry.dispose(); } });
-  coils = MD.slots.map(function(){ return null; });
-  var cfg = sim.cfg;
-  S.usedSlots().forEach(function(si){
-    var sMax = cfg.turnsPerSlot, curve = new WireCurve(cfg, si, sMax);
-    // 96 segmen per lilitan, dikurangi bila lilitan banyak supaya geometri tetap ringan (maks ±12.000 segmen)
+  coils.forEach(function(m){ coilGroup.remove(m); m.geometry.dispose(); });
+  coils = MD.wires.map(function(w, wi){
+    var curve = new WireCurve(sim.cfg, wi), sMax = curve.sMax;
+    // 96 segmen per putaran, dikurangi bila putaran banyak supaya geometri tetap ringan (maks ±12.000 segmen)
     var perTurn = Math.max(32, Math.min(SEG_PER_TURN, Math.floor(12000 / sMax)));
     var segs = Math.max(8, Math.ceil(sMax * perTurn));
-    var geo = new THREE.TubeGeometry(curve, segs, cfg.wireD / 2, RADIAL, false);
+    var geo = new THREE.TubeGeometry(curve, segs, sim.cfg.wireD / 2, RADIAL, false);
     geo.setDrawRange(0, 0);
     var m = new THREE.Mesh(geo, wireMat); m.userData = {curve: curve, segs: segs, sMax: sMax, shown: 0};
-    coilGroup.add(m); coils[si] = m;
+    coilGroup.add(m); return m;
+  });
+  rebuildNotches();
+}
+
+/* ---------- coakan flens ----------
+ * Flens yang dilewati kawat diberi coakan selebar jendela lintasan (S.notchHalfAngle) sampai ke inti.
+ * Material bobbin membuang fragmen di daerah coakan; dinding & dasar coakan ditambahkan sebagai mesh. */
+function notchFlanges(){
+  var f = [];
+  MD.wires.forEach(function(w, wi){ S.schedule(sim.cfg, wi).forEach(function(g){ if (g.type === 'cross' && f.indexOf(g.flange) < 0) f.push(g.flange); }); });
+  return f.sort(function(a, b){ return a - b; });
+}
+function installNotchShader(){
+  notchU = { uNC: {value: new THREE.Vector2(MD.axisC.x, MD.axisC.y)}, uNTheta: {value: 0}, uNAng: {value: MD.notchAngle},
+             uNHW: {value: S.notchHalfAngle()}, uNCore: {value: MD.coreR}, uNBands: {value: [0, 0, 0, 0, 0, 0, 0, 0].map(function(){ return new THREE.Vector2(1e3, 1e3); })} };
+  bobbinMeshes.forEach(function(o){
+    [].concat(o.material).forEach(function(m){
+      m.onBeforeCompile = function(sh){
+        Object.keys(notchU).forEach(function(k){ sh.uniforms[k] = notchU[k]; });
+        sh.vertexShader = 'varying vec3 vNWP;\n' + sh.vertexShader.replace('#include <project_vertex>', '#include <project_vertex>\n  vNWP = (modelMatrix * vec4(transformed, 1.0)).xyz;');
+        sh.fragmentShader = 'varying vec3 vNWP;\nuniform vec2 uNC; uniform float uNTheta, uNAng, uNHW, uNCore; uniform vec2 uNBands[8];\n' +
+          sh.fragmentShader.replace('#include <clipping_planes_fragment>', '#include <clipping_planes_fragment>\n' +
+          '  { vec2 q = vNWP.xy - uNC; float rr = length(q); float a = atan(q.y, q.x) - uNTheta - uNAng; a = atan(sin(a), cos(a));\n' +
+          '    if (rr > uNCore + 0.004 && abs(a) < uNHW) { for (int i = 0; i < 8; i++) { if (vNWP.z > uNBands[i].x - 0.004 && vNWP.z < uNBands[i].y + 0.004) discard; } } }');
+      };
+      m.customProgramCacheKey = function(){ return 'notch'; };
+      m.needsUpdate = true;
+    });
   });
 }
+function rebuildNotches(){
+  if (!notchU || !coilGroup) return;
+  var fl = notchFlanges(), hw = S.notchHalfAngle(), a0 = MD.notchAngle - hw, a1 = MD.notchAngle + hw, R0 = MD.coreR, R1 = MD.flangeR + 0.05;
+  notchU.uNBands.value.forEach(function(v, i){ var f = MD.flanges[fl[i]]; if (f) v.set(f[0], f[1]); else v.set(1e3, 1e3); });
+  if (notchGroup) { coilGroup.remove(notchGroup); notchGroup.traverse(function(o){ if (o.geometry) o.geometry.dispose(); }); }
+  notchGroup = new THREE.Group(); coilGroup.add(notchGroup);
+  var mat = new THREE.MeshLambertMaterial({color: 0x9aa3ab, side: THREE.DoubleSide});   // bayangan di dalam coakan supaya terbaca
+  fl.forEach(function(k){
+    var z0 = MD.flanges[k][0], z1 = MD.flanges[k][1], pos = [], N = 10, P = function(r, a, z){ pos.push(r * Math.cos(a), r * Math.sin(a), z); };
+    [a0, a1].forEach(function(a){ P(R0, a, z0); P(R1, a, z0); P(R1, a, z1); P(R0, a, z0); P(R1, a, z1); P(R0, a, z1); });     // dinding samping
+    for (var i = 0; i < N; i++) { var b0 = a0 + (a1 - a0) * i / N, b1 = a0 + (a1 - a0) * (i + 1) / N;                        // dasar (permukaan inti)
+      P(R0, b0, z0); P(R0, b1, z0); P(R0, b1, z1); P(R0, b0, z0); P(R0, b1, z1); P(R0, b0, z1); }
+    var g = new THREE.BufferGeometry(); g.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3)); g.computeVertexNormals();
+    var m = new THREE.Mesh(g, mat); m.userData.flange = k; notchGroup.add(m);
+    var e = new THREE.LineSegments(new THREE.EdgesGeometry(g, 30), LINE); m.add(e);
+  });
+}
+
 var _a = new THREE.Vector3(), _b = new THREE.Vector3(), _up = new THREE.Vector3(0, 1, 0);
 function poseCoils(r){
   if (!coilGroup) return;
   var w = r.winding, d = sim.cfg.wireD;
   coilGroup.rotation.z = r.thetaC;
   coilGroup.updateMatrixWorld(true);
+  if (notchU) notchU.uNTheta.value = r.thetaC;
   w.wires.forEach(function(k, j){
-    var m = coils[k.slot], u = m.userData;
-    // buka tabung sampai lilitan sekarang (dibulatkan ke bawah per segmen)
-    var seg = Math.min(u.segs, Math.floor(k.fill / u.sMax * u.segs + 1e-9));
+    var m = coils[j], u = m.userData;
+    // buka tabung sampai putaran bobbin sekarang (dibulatkan ke bawah per segmen)
+    var seg = Math.min(u.segs, Math.floor(Math.min(r.bobbinTurns, u.sMax) / u.sMax * u.segs + 1e-9));
     u.shown = seg; m.geometry.setDrawRange(0, seg * RADIAL * 6);
     // kawat masuk: dari titik datang ke ujung tabung yang terlihat, jadi selalu tersambung
     _a.set(MD.axisC.x + FEED.dx, MD.axisC.y + FEED.dy, k.layZ);
@@ -476,13 +527,14 @@ $('b-reset').addEventListener('click', function(){ S.reset(sim); setStatus(); hu
 $('i-rpm').addEventListener('input', function(e){ sim.cfg.rpmIn = +e.target.value; $('o-rpm-in').textContent = e.target.value + ' rpm'; hud(true); });
 function rebuildSim(){
   var cc = sim.clampClosed;
-  sim = S.create({rpmIn: +$('i-rpm').value, wireD: +$('i-wire').value, turnsPerSlot: Math.max(1, Math.round(+$('i-tps').value || 1))});
+  sim = S.create({rpmIn: +$('i-rpm').value, wireD: +$('i-wire').value, slotsPerWire: +$('i-spw').value, turnsPerSlot: Math.max(1, Math.round(+$('i-tps').value || 1))});
   sim.clampClosed = cc;
   var cap = S.maxTurnsPerSlot(sim.cfg); $('i-tps').max = cap; $('i-tps').value = sim.cfg.turnsPerSlot;
   rebuildCoils(); setStatus(); pose(1); hud(true);
 }
 $('i-tps').addEventListener('change', rebuildSim);
 $('i-wire').addEventListener('change', rebuildSim);
+$('i-spw').addEventListener('change', rebuildSim);
 $('b-sound').addEventListener('click', function(e){ var v = !Snd.on; Snd.setOn(v); e.currentTarget.setAttribute('aria-pressed', String(v)); e.currentTarget.textContent = 'Suara: ' + (v ? 'hidup' : 'mati'); });
 document.addEventListener('keydown', function(e){ if (e.code === 'Space' && e.target === document.body) { e.preventDefault(); toggleRun(); } });
 
@@ -501,8 +553,9 @@ function hud(force){
   var now = performance.now(); if (!force && now - lastHud < 90) return; lastHud = now;
   var r = S.readout(sim);
   var w = r.winding, total = S.totalTurns(sim.cfg);
-  $('o-turns').textContent = Math.floor(r.bobbinTurns + 1e-9); $('o-target').textContent = total;
-  setV('o-slot', w.wires.map(function(k){ return k.slot + 1; }).join(' · '), '/ ' + MD.slots.length); setV('o-layer', w.layer, '/ ' + S.maxLayers(sim.cfg));
+  var perWire = S.wireSlots(sim.cfg, 0).reduce(function(acc, si){ return acc + w.fills[si]; }, 0);
+  $('o-turns').textContent = Math.floor(perWire + 1e-9); $('o-target').textContent = sim.cfg.turnsPerSlot * S.wireSlots(sim.cfg, 0).length;
+  setV('o-slot', w.wires.map(function(k){ return k.crossing !== null ? (k.slot + 1) + '→' + (k.crossing + 1) : String(k.slot + 1); }).join(' · '), '/ ' + MD.slots.length); setV('o-layer', w.layer, '/ ' + S.maxLayers(sim.cfg));
   setV('o-build', w.buildD.toFixed(2), 'mm'); setV('o-len', w.lengthM.toFixed(3), 'm · 2 kawat');
   $('o-bar').style.width = (Math.min(1, r.progress) * 100).toFixed(1) + '%';
   setV('o-rpmA', r.rpmA.toFixed(0), 'rpm'); setV('o-rpmB', r.rpmB.toFixed(0), 'rpm'); setV('o-rpmC', r.rpmC.toFixed(0), 'rpm');
@@ -552,12 +605,12 @@ window.__jig = {
   coilState: function(){
     var ends = strands.map(function(st){ st.updateMatrixWorld(true); return new THREE.Vector3(0, 0.5, 0).applyMatrix4(st.matrixWorld).toArray(); });     // ujung di gulungan
     var feeds = strands.map(function(st){ return new THREE.Vector3(0, -0.5, 0).applyMatrix4(st.matrixWorld).toArray(); });   // ujung datang
-    var tubeEnds = coils.map(function(m){ if (!m || !m.userData.shown) return null; var v = m.userData.curve.getPoint(m.userData.shown / m.userData.segs); return coilGroup.localToWorld(v).toArray(); });
-    var tubeStart = coils.map(function(m){ return m ? coilGroup.localToWorld(m.userData.curve.getPoint(0)).toArray() : null; });
-    return { visible: coils.map(function(m){ return !!m && m.geometry.drawRange.count > 0; }),
-      shownTurns: coils.map(function(m){ return m ? m.userData.shown / m.userData.segs * m.userData.sMax : 0; }),
-      tubeR: coils.map(function(m){ return m ? m.geometry.parameters.radius : 0; }),
-      rot: coilGroup.rotation.z, strandEnds: ends, strandFeeds: feeds, tubeEnds: tubeEnds, tubeStart: tubeStart,
+    var tubeEnds = coils.map(function(m){ if (!m.userData.shown) return null; var v = m.userData.curve.getPoint(m.userData.shown / m.userData.segs); return coilGroup.localToWorld(v).toArray(); });
+    return { shownTurns: coils.map(function(m){ return m.userData.shown / m.userData.segs * m.userData.sMax; }),
+      tubeR: coils.map(function(m){ return m.geometry.parameters.radius; }),
+      rot: coilGroup.rotation.z, strandEnds: ends, strandFeeds: feeds, tubeEnds: tubeEnds,
+      notches: notchGroup ? notchGroup.children.map(function(m){ return m.userData.flange; }) : [],
+      notchBands: notchU ? notchU.uNBands.value.map(function(v){ return [v.x, v.y]; }) : [],
       lines: bobbinMeshes.reduce(function(a, o){ return a + o.children.filter(function(k){ return k.isLineSegments; }).length; }, 0) }; },
   liveBox: function(){ model.updateMatrixWorld(true); var b = new THREE.Box3().setFromObject(model); return {min: b.min.toArray(), max: b.max.toArray()}; },
   pivotAngles: function(){ var q = function(p){ return p ? 2 * Math.atan2(new THREE.Vector3(p.quaternion.x, p.quaternion.y, p.quaternion.z).dot(p.userData.axis), p.quaternion.w) : null; };

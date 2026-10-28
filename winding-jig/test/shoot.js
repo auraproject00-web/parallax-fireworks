@@ -79,7 +79,7 @@ const wrap = (a) => Math.atan2(Math.sin(a), Math.cos(a));
     await page.evaluate(() => { window.__jig.frozen = true; window.__jig.start(); });
     const r = await page.evaluate(() => window.__jig.advance(20.25));   // 30 rpm → 10,125 putaran
     const h = await hud(page);
-    check('putaran = 10 setelah 20,25 s @30 rpm', h.turns === '10', h.turns);
+    check('10 lilitan per kawat setelah 20,25 s @30 rpm', h.turns === '10', h.turns);
     check('rpm handwheel 30', num(h.rpmA) === 30, h.rpmA);
     check('rpm gear atas 30', num(h.rpmB) === 30, h.rpmB);
     check('rasio 1 : 1', h.ratio === '1 : 1', h.ratio);
@@ -94,20 +94,19 @@ const wrap = (a) => Math.atan2(Math.sin(a), Math.cos(a));
     const hb = await page.evaluate(() => ({ rpmC: document.getElementById('o-rpmC').textContent, bob: document.getElementById('o-bob').textContent }));
     check('rpm bobbin 30', num(hb.rpmC) === 30, hb.rpmC);
     check('putaran bobbin 10.1', hb.bob === '10.1', hb.bob);
-    // lilitan setelah 10,125 putaran bobbin, kawat 0,2 mm, 20 lilitan per alur, 2 kawat
+    // lilitan setelah 10,125 putaran bobbin, kawat 0,2 mm, 20 lilitan per alur, 2 kawat × 3 alur
     const cfg = S.create().cfg, wexp = S.winding(cfg, 10.125);
     const hw = await page.evaluate(() => { const t = (id) => document.getElementById(id).textContent.trim(); return { slot: t('o-slot'), layer: t('o-layer'), build: t('o-build'), len: t('o-len') }; });
     check('alur dililit 1 · 7', hw.slot.startsWith('1 · 7'), hw.slot);
-    check('lapisan 2 (alur 1: 6 lilitan per lapis)', num(hw.layer) === wexp.layer && wexp.layer === 2, hw.layer);
+    check('lapisan = sim (alur 1: 5 lilitan per lapis)', num(hw.layer) === wexp.layer && wexp.layer === 3, hw.layer);
     check('Ø tumpukan = sim', Math.abs(num(hw.build) - wexp.buildD) < 0.006, `${hw.build} vs ${wexp.buildD.toFixed(2)}`);
     check('kawat terpakai (2 kawat) = sim', Math.abs(num(hw.len) - wexp.lengthM) < 0.0006, `${hw.len} vs ${wexp.lengthM.toFixed(3)}`);
     const cs = await page.evaluate(() => window.__jig.coilState());
-    check('kumparan hanya di alur 1 dan 7', cs.visible[0] && cs.visible[6] && cs.visible.slice(1, 6).every((v) => !v), JSON.stringify(cs.visible));
-    check('tabung kawat Ø = Ø kawat', cs.tubeR[0] === cfg.wireD / 2 && cs.tubeR[6] === cfg.wireD / 2, cs.tubeR[0]);
-    check('lilitan terlihat = lilitan sim (±1/96)', [0, 6].every((i) => Math.abs(cs.shownTurns[i] - wexp.fills[i]) <= 1 / 96 + 1e-9), cs.shownTurns.filter(Boolean).map((v) => v.toFixed(3)).join(' / '));
-    cs.tubeEnds.forEach((e, i) => { if (!e) return; const se = cs.strandEnds[wexp.wires.findIndex((k) => k.slot === i)];
-      check(`kawat masuk tersambung ke gulungan alur ${i + 1}`, Math.hypot(e[0] - se[0], e[1] - se[1], e[2] - se[2]) < 1e-3, Math.hypot(e[0] - se[0], e[1] - se[1], e[2] - se[2]).toExponential(1)); });
+    check('tabung kawat Ø = Ø kawat', cs.tubeR.every((v) => v === cfg.wireD / 2), cs.tubeR.join(','));
+    check('kawat terlihat = putaran bobbin (±1/96)', cs.shownTurns.every((v) => Math.abs(v - 10.125) <= 1 / 96 + 1e-9), cs.shownTurns.map((v) => v.toFixed(3)).join(' / '));
     check('ada 2 helai kawat', cs.strandEnds.length === 2);
+    cs.tubeEnds.forEach((e, j) => { const se = cs.strandEnds[j], dd = Math.hypot(e[0] - se[0], e[1] - se[1], e[2] - se[2]);
+      check(`kawat ${j + 1} masuk tersambung ke gulungannya`, dd < 1e-3, dd.toExponential(1)); });
     cs.strandEnds.forEach((e, j) => {
       const sl = S.MODEL.slots[wexp.wires[j].slot], f = cs.strandFeeds[j];
       check(`kawat ${j + 1} masuk di alur ${wexp.wires[j].slot + 1}`, e[2] >= sl[0] && e[2] <= sl[1], e[2].toFixed(3));
@@ -115,6 +114,8 @@ const wrap = (a) => Math.atan2(Math.sin(a), Math.cos(a));
       check(`kawat ${j + 1} datang mendatar dari depan (−x)`, e[0] - f[0] > 30 && Math.abs(f[1] - e[1]) < 0.25 * (e[0] - f[0]), `dx ${(f[0] - e[0]).toFixed(1)} dy ${(f[1] - e[1]).toFixed(1)}`);
       check(`kawat ${j + 1} menyinggung sisi atas kumparan`, e[1] > 129.46, e[1].toFixed(2));
     });
+    check('coakan di flens 1|2, 2|3, 5|6, 6|7', JSON.stringify(cs.notches) === '[1,2,5,6]', JSON.stringify(cs.notches));
+    check('daerah coakan shader = flens yang sama', JSON.stringify(cs.notchBands.slice(0, 4)) === JSON.stringify([1, 2, 5, 6].map((k) => S.MODEL.flanges[k])), JSON.stringify(cs.notchBands.slice(0, 4)));
     check('bobbin tanpa garis tepi', cs.lines === 0, cs.lines);
     check('kumparan ikut berputar dengan bobbin', Math.abs(wrap(cs.rot - r.thetaC)) < 1e-6);
     await page.screenshot({ path: path.join(OUT, '02-berputar.png') });
@@ -135,15 +136,30 @@ const wrap = (a) => Math.atan2(Math.sin(a), Math.cos(a));
     const bs = back.max.map((v, i) => v - back.min[i]);
     check('ukuran model sama setelah 3 putaran penuh', bs.every((v, i) => Math.abs(v - RAW.size[i]) < 0.15), bs.map((v) => v.toFixed(1)).join(' × '));
 
-    // berhenti saat kedua alur berisi 5 lilitan
+    // pindah alur: tengah lintasan coakan kawat kiri 1→2
+    await page.click('#b-reset');
+    await page.evaluate(() => { window.__jig.sim.running = true; });
+    const cross = S.schedule(cfg, 0)[1], sMid = cross.ws + S.CROSS.w * (S.CROSS.slide + S.CROSS.pass) / 2;
+    await page.evaluate((sMid) => window.__jig.advance(sMid * 2), sMid);      // 30 rpm → 0,5 putaran/s
+    const hx = await page.evaluate(() => document.getElementById('o-slot').textContent.trim());
+    check('HUD menampilkan pindah alur 1→2', hx.startsWith('1→2'), hx);
+    const cx = await page.evaluate(() => window.__jig.coilState());
+    const e0 = cx.strandEnds[0], fl = S.MODEL.flanges[1];
+    check('kawat kiri berada di flens 1|2 saat pindah', e0[2] > fl[0] && e0[2] < fl[1], e0[2].toFixed(3));
+    const angLocal = wrap(Math.atan2(e0[1] - 129.46, e0[0] - 29.62) - cx.rot - S.MODEL.notchAngle);
+    check('…tepat di dalam coakan', Math.abs(angLocal) <= S.notchHalfAngle(), (angLocal * 180 / Math.PI).toFixed(2) + '°');
+    await page.evaluate(() => window.__jig.setView('bobbin'));
+    await page.screenshot({ path: path.join(OUT, '05a-pindah-alur.png') });
+
+    // berhenti saat 3 alur × 5 lilitan penuh di kedua kawat
     await page.fill('#i-tps', '5'); await page.dispatchEvent('#i-tps', 'change');
     await page.evaluate(() => { window.__jig.sim.running = true; });
     await page.evaluate(() => window.__jig.advance(120));
     const d = await hud(page);
-    check('berhenti di 5 lilitan', d.turns === '5', d.turns);
+    check('berhenti di 15 lilitan per kawat (3 × 5)', d.turns === '15', d.turns);
     check('status Selesai', d.status === 'Selesai', d.status);
-    const wfull = await page.evaluate(() => window.__jig.coilState());
-    check('dua kumparan terlihat', wfull.visible.filter(Boolean).length === 2, JSON.stringify(wfull.visible));
+    const wfull = await page.evaluate(() => window.__jig.S.readout(window.__jig.sim).winding.fills);
+    check('alur 1,2,3,5,6,7 masing-masing 5 lilitan', JSON.stringify(wfull.map((f) => +f.toFixed(6))) === '[5,5,5,0,5,5,5]', JSON.stringify(wfull));
     await page.evaluate(() => window.__jig.setView('bobbin'));
     await page.screenshot({ path: path.join(OUT, '05b-bobbin-penuh.png') });
 

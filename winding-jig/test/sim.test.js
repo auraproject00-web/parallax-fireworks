@@ -92,46 +92,10 @@ test('reset mengembalikan ke nol', () => {
 test('alur dari model: 7 alur, inti 5,89, flens 8,39', () => {
   assert.equal(S.MODEL.slots.length, 7);
   const w = S.MODEL.slots.map((_, i) => +S.slotWidth(i).toFixed(2));
-  assert.deepEqual(w, [1.2, 1.8, 1.8, 0.9, 0.9, 1.8, 1.8]);
-  for (let i = 1; i < 7; i++) assert.ok(S.MODEL.slots[i][0] > S.MODEL.slots[i - 1][1], 'alur tidak tumpang tindih');
-});
-
-test('kapasitas alur @ kawat 0,2 mm', () => {
-  const c = { ...S.DEFAULTS, wireD: 0.2 };
-  assert.equal(S.maxLayers(c), 12);                 // (8,39 − 5,89) / 0,2
-  assert.equal(S.turnsPerLayer(c, 0), 6);           // alur 1: 1,2 / 0,2
-  assert.equal(S.turnsPerLayer(c, 6), 9);           // alur 7: 1,8 / 0,2
-  assert.deepEqual(S.usedSlots(), [0, 6]);
-  assert.equal(S.maxTurnsPerSlot(c), 72);           // alur 1 lebih sempit: 6 × 12
-  assert.equal(S.create({ turnsPerSlot: 999 }).cfg.turnsPerSlot, 72);
-});
-
-test('dua kawat bersamaan: target putaran = lilitan per alur', () => {
-  const s = S.create({ turnsPerSlot: 20 });
-  assert.equal(S.MODEL.wires.length, 2);
-  assert.equal(S.totalTurns(s.cfg), 20);
-  near(s.cfg.targetTurns, 20);
-});
-
-test('kawat kiri di alur 1, kawat kanan di alur 7, terisi bersamaan', () => {
-  const c = { ...S.DEFAULTS, turnsPerSlot: 20 };
-  let w = S.winding(c, 0); assert.ok(w.fills.every((f) => f === 0));
-  w = S.winding(c, 7.5);
-  assert.deepEqual(w.fills, [7.5, 0, 0, 0, 0, 0, 7.5]);
-  assert.equal(w.wires[0].slot, 0); assert.equal(w.wires[1].slot, 6);
-  assert.equal(w.wires[0].layer, 2); assert.equal(w.wires[1].layer, 1);   // 6 vs 9 lilitan per lapis
-  w = S.winding(c, 999); assert.deepEqual(w.fills, [20, 0, 0, 0, 0, 0, 20], 'tidak melebihi target');
-});
-
-test('posisi tiap kawat selalu di dalam alurnya', () => {
-  const c = { ...S.DEFAULTS, turnsPerSlot: 60 };
-  for (let n = 0; n <= 70; n += 0.25) {
-    const w = S.winding(c, n);
-    for (const k of w.wires) {
-      const [z0, z1] = S.MODEL.slots[k.slot];
-      assert.ok(k.layZ >= z0 && k.layZ <= z1, `n=${n} ${k.name} z=${k.layZ}`);
-    }
-    assert.ok(w.radii.every((r) => r >= S.MODEL.coreR && r <= S.MODEL.flangeR + 1e-9), `n=${n} radius`);
+  assert.deepEqual(w, [1.01, 1.61, 1.61, 0.71, 0.9, 1.8, 1.8]);
+  for (let i = 0; i < 7; i++) {
+    near(S.MODEL.slots[i][0], S.MODEL.flanges[i][1], 1e-12, `alur ${i + 1} mulai di muka flens ${i}`);
+    near(S.MODEL.slots[i][1], S.MODEL.flanges[i + 1][0], 1e-12, `alur ${i + 1} berakhir di muka flens ${i + 1}`);
   }
 });
 
@@ -143,18 +107,10 @@ test('panjang kawat = jumlah kedua kawat', () => {
     return a; };
   for (const n of [0, 1, 6, 7, 9.5, 20]) {
     const f = Math.min(20, n);
-    near(S.winding(c, n).lengthM, (per(6, f) + per(9, f)) / 1000, 1e-9, `n=${n}`);
+    near(S.winding(c, n).lengthM, (per(5, f) + per(9, f)) / 1000, 1e-9, `n=${n}`);
   }
-  const one = [6, 6, 6, 2].reduce((a, t, k) => a + t * 2 * Math.PI * (5.89 + 0.2 * (k + 0.5)), 0);
+  const one = [5, 5, 5, 5].reduce((a, t, k) => a + t * 2 * Math.PI * (5.89 + 0.2 * (k + 0.5)), 0);
   near(S.slotLength(c, 0, 20), one, 1e-9);
-});
-
-test('simulasi berhenti saat kedua alur penuh', () => {
-  const s = S.create({ turnsPerSlot: 10, rpmIn: 120 }); s.running = true;
-  for (let i = 0; i < 200; i++) S.step(s, 0.5);
-  const r = S.readout(s);
-  assert.equal(s.done, true); near(r.bobbinTurns, 10, 1e-9);
-  assert.deepEqual(r.winding.fills.map((f) => +f.toFixed(9)), [10, 0, 0, 0, 0, 0, 10]);
 });
 
 test('klem toggle membuka 90°', () => {
@@ -250,5 +206,135 @@ test('ujung gulungan tepat di titik singgung kawat masuk', () => {
     const p = S.wirePath(c, 6, s), world = p.phi + c.driveDir * 2 * Math.PI * s;   // bobbin sudah berputar s kali
     const T = S.wireTangent(p.r);
     near(Math.cos(world), T.x / p.r, 1e-12); near(Math.sin(world), T.y / p.r, 1e-12);
+  }
+});
+
+// ---------- pindah alur lewat coakan ----------
+const wrapA = (a) => Math.atan2(Math.sin(a), Math.cos(a));
+
+test('kapasitas alur @ kawat 0,2 mm', () => {
+  const c = { ...S.DEFAULTS, wireD: 0.2 };
+  assert.equal(S.maxLayers(c), 12);                 // (8,39 − 5,89) / 0,2
+  assert.equal(S.turnsPerLayer(c, 0), 5);           // alur 1: 1,01 / 0,2
+  assert.equal(S.turnsPerLayer(c, 6), 9);           // alur 7: 1,8 / 0,2
+  assert.equal(S.turnsPerLayer(c, 4), 4);           // alur 5: 0,9 / 0,2
+  assert.deepEqual(S.usedSlots(c), [0, 1, 2, 6, 5, 4]);
+  assert.equal(S.maxTurnsPerSlot(c), 48);           // alur 5 tersempit: 4 × 12
+  assert.equal(S.create({ turnsPerSlot: 999 }).cfg.turnsPerSlot, 48);
+  assert.equal(S.maxTurnsPerSlot({ ...c, slotsPerWire: 1 }), 60);   // alur 1: 5 × 12
+});
+
+test('urutan alur: kiri 1→2→3, kanan 7→6→5, lilitan sama tiap alur', () => {
+  const c = S.create({ turnsPerSlot: 20 }).cfg;
+  for (const [wi, exp] of [[0, [0, 1, 2]], [1, [6, 5, 4]]]) {
+    const sg = S.schedule(c, wi), slots = sg.filter((g) => g.type === 'slot');
+    assert.deepEqual(slots.map((g) => g.si), exp);
+    slots.forEach((g) => near(g.s1 - g.s0, 20, 1e-12));
+    sg.filter((g) => g.type === 'cross').forEach((g, k) => {
+      assert.equal(g.from, exp[k]); assert.equal(g.to, exp[k + 1]);
+      assert.ok(g.ws >= g.s0 - 1e-12 && g.ws - g.s0 < 1, 'menunggu coakan kurang dari 1 putaran');
+      near(g.s1 - g.ws, S.CROSS.w, 1e-12);
+    });
+    for (let i = 1; i < sg.length; i++) near(sg[i].s0, sg[i - 1].s1, 1e-12, 'segmen bersambung');
+  }
+});
+
+test('jalur kawat lengkap kontinu, termasuk saat pindah alur', () => {
+  const c = S.create({ turnsPerSlot: 20 }).cfg;
+  for (const wi of [0, 1]) {
+    const end = S.wireTurns(c, wi); let prev = S.wirePathW(c, wi, 0);
+    for (let s = 0.005; s <= end; s += 0.005) {
+      const p = S.wirePathW(c, wi, s);
+      assert.ok(Math.abs(p.z - prev.z) < 0.25, `kawat ${wi} s=${s.toFixed(3)} Δz=${(p.z - prev.z).toFixed(3)}`);   // lompatan sungguhan ≥ 1 alur
+      assert.ok(Math.abs(p.r - prev.r) < 0.12, `kawat ${wi} s=${s.toFixed(3)} Δr=${(p.r - prev.r).toFixed(3)}`);
+      assert.ok(Math.abs(wrapA(p.phi - prev.phi)) < 0.06, `kawat ${wi} s=${s.toFixed(3)} Δφ`);
+      prev = p;
+    }
+  }
+});
+
+test('kawat hanya menembus flens lewat coakan', () => {
+  for (const opts of [{ turnsPerSlot: 20 }, { turnsPerSlot: 7, wireD: 0.3 }, { turnsPerSlot: 33, wireD: 0.15 }, { turnsPerSlot: 1 }]) {
+    const c = S.create(opts).cfg, d = c.wireD, hw = S.notchHalfAngle();
+    for (const wi of [0, 1]) {
+      const end = S.wireTurns(c, wi); let passed = 0;
+      for (let s = 0; s <= end; s += 0.002) {
+        const p = S.wirePathW(c, wi, s);
+        S.MODEL.flanges.forEach(([f0, f1], k) => {
+          const inBand = p.z + d / 2 > f0 + 1e-9 && p.z - d / 2 < f1 - 1e-9;
+          if (!inBand || p.r - d / 2 >= S.MODEL.flangeR) return;
+          const off = Math.abs(wrapA(p.phi - S.MODEL.notchAngle));
+          assert.ok(off <= hw + 1e-9, `${JSON.stringify(opts)} kawat ${wi} s=${s.toFixed(3)} menembus flens ${k} di luar coakan (${(off * 180 / Math.PI).toFixed(1)}°)`);
+          assert.ok(p.seg === 'cross' && p.flange === k, `hanya saat pindah, lewat flens ${k}`);
+          assert.ok(p.r - d / 2 >= S.MODEL.coreR - 1e-9, 'di atas inti');
+          passed++;
+        });
+      }
+      assert.ok(passed > 0 || wi < 0, 'kawat memang melewati coakan');
+    }
+  }
+});
+
+test('kawat tetap di alurnya selama melilit', () => {
+  const c = S.create({ turnsPerSlot: 30 }).cfg, d = c.wireD;
+  for (const wi of [0, 1]) for (const g of S.schedule(c, wi).filter((g) => g.type === 'slot')) {
+    const [z0, z1] = S.MODEL.slots[g.si];
+    for (let s = g.s0; s <= g.s1; s += 0.05) {
+      const p = S.wirePathW(c, wi, s);
+      assert.ok(p.z - d / 2 >= z0 - 1e-9 && p.z + d / 2 <= z1 + 1e-9, `alur ${g.si + 1} z=${p.z}`);
+      assert.ok(p.r - d / 2 >= S.MODEL.coreR - 1e-9 && p.r + d / 2 <= S.MODEL.flangeR + 1e-9);
+    }
+  }
+});
+
+test('alur berikut mulai dari sisi flens yang dilewati', () => {
+  const c = S.create().cfg;
+  for (const wi of [0, 1]) {
+    const sg = S.schedule(c, wi);
+    sg.forEach((g, i) => { if (g.type !== 'cross') return;
+      const nxt = sg[i + 1], p = S.wirePathW(c, wi, nxt.s0 + 0.01);
+      const fl = S.MODEL.flanges[g.flange], dist = Math.min(Math.abs(p.z - fl[0]), Math.abs(p.z - fl[1]));
+      assert.ok(dist < c.wireD, `lilitan pertama alur ${nxt.si + 1} menempel flens (${dist.toFixed(3)} mm)`);
+    });
+  }
+});
+
+test('ketiga alur tiap kawat terisi sama, lalu berhenti', () => {
+  const s = S.create({ turnsPerSlot: 10, rpmIn: 120 }); s.running = true;
+  for (let i = 0; i < 400; i++) S.step(s, 0.5);
+  const r = S.readout(s);
+  assert.equal(s.done, true);
+  assert.deepEqual(r.winding.fills.map((f) => +f.toFixed(9)), [10, 10, 10, 0, 10, 10, 10]);
+  near(r.bobbinTurns, S.totalTurns(s.cfg), 1e-9);
+  assert.ok(r.winding.wires.every((w) => w.done));
+});
+
+test('urutan pengisian: alur berikut baru terisi setelah alur sebelumnya penuh', () => {
+  const c = S.create({ turnsPerSlot: 20 }).cfg;
+  let w = S.winding(c, 10); assert.deepEqual(w.fills, [10, 0, 0, 0, 0, 0, 10]);
+  w = S.winding(c, 20.5); assert.deepEqual(w.fills, [20, 0, 0, 0, 0, 0, 20]);
+  assert.equal(w.wires[0].crossing, 1); assert.equal(w.wires[1].crossing, 5);
+  const s2 = S.schedule(c, 0)[2].s0;
+  w = S.winding(c, s2 + 5); assert.deepEqual(w.fills.map((f) => +f.toFixed(9)), [20, 5, 0, 0, 0, 0, 20].map((v, i) => i === 5 ? +Math.max(0, s2 + 5 - S.schedule(c, 1)[2].s0).toFixed(9) : v));
+});
+
+test('satu alur per kawat tetap berfungsi', () => {
+  const c = S.create({ slotsPerWire: 1, turnsPerSlot: 20 }).cfg;
+  near(S.totalTurns(c), 20, 1e-12);
+  assert.deepEqual(S.winding(c, 99).fills, [20, 0, 0, 0, 0, 0, 20]);
+});
+
+test('panjang kawat ≈ panjang jalur 3D yang digambar', () => {
+  const c = S.create({ turnsPerSlot: 20 }).cfg;
+  for (const nb of [7.3, 20.6, 45, S.totalTurns(c)]) {
+    let L = 0;
+    for (const wi of [0, 1]) {
+      const end = Math.min(nb, S.wireTurns(c, wi)), N = Math.ceil(end * 400);
+      let pp = null;
+      for (let i = 0; i <= N; i++) { const p = S.wirePathW(c, wi, end * i / N), q = [p.r * Math.cos(p.phi), p.r * Math.sin(p.phi), p.z];
+        if (pp) L += Math.hypot(q[0] - pp[0], q[1] - pp[1], q[2] - pp[2]); pp = q; }
+    }
+    const est = S.winding(c, nb).lengthM * 1000;
+    assert.ok(Math.abs(est - L) / L < 0.004, `nb=${nb}: HUD ${est.toFixed(1)} mm vs jalur ${L.toFixed(1)} mm`);
   }
 });
