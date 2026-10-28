@@ -1,5 +1,8 @@
 /* Simulasi winding jig JI9G CMG21 — murni angka, tanpa three.js.
- * Dipakai bersama oleh halaman (window.JigSim) dan tes Node (require).
+ * Angka gear diukur dari model SketchUp CMG21-22-25-20_WINDING_JIG.dae:
+ *   gear bawah (group_28) 10 gigi, pusat y = 108,12 mm, di poros handwheel
+ *   gear atas  (group_30) 10 gigi, pusat y = 119,02 mm
+ *   jarak sumbu 10,90 mm → modul 1,09 mm, rasio 1 : 1
  * Satuan: mm, detik, radian, rpm.
  */
 (function (root, factory) {
@@ -9,20 +12,23 @@
   'use strict';
   var TAU = Math.PI * 2;
 
+  var MODEL = {
+    axisA: { x: 29.67, y: 108.12 },   // poros handwheel + gear bawah
+    axisB: { x: 29.67, y: 119.02 },   // gear atas
+    hinge: { x: 56.5, y: 123.2 },     // pin engsel klem (group_65)
+    zA: 10, zB: 10,
+    outerR: 6.3,                      // radius kepala gigi terukur
+    handwheelD: 60                    // diameter piringan handwheel
+  };
+
   var DEFAULTS = {
-    module: 1.5,        // modul gear (mm)
-    zIn: 48,            // gear A, poros handwheel (input)
-    zSpindle: 16,       // gear B, poros spindle bobbin
-    zCounter: 24,       // gear C, penghitung putaran (digerakkan A)
-    pressureAngleDeg: 20,
-    efficiency: 0.98,   // efisiensi per pasang gear
-    coreD: 14,          // diameter inti bobbin
-    flangeD: 30,        // diameter flens bobbin
-    slotWidth: 6,       // lebar satu alur lilitan
-    slots: 4,           // jumlah alur (dililit bersamaan lewat sisir 4 gigi)
-    wireD: 0.5,         // diameter kawat email
-    rpmIn: 40,          // putaran handwheel
-    targetTurns: 150    // target lilitan per alur
+    zA: MODEL.zA,
+    zB: MODEL.zB,
+    centerDist: MODEL.axisB.y - MODEL.axisA.y,   // 10,90 mm
+    efficiency: 0.98,
+    rpmIn: 30,
+    targetTurns: 100,
+    clampOpenRad: 0.35
   };
 
   function merge(a, b) {
@@ -32,61 +38,22 @@
     return o;
   }
 
-  // ---------- geometri gear ----------
-  function pitchRadius(m, z) { return m * z / 2; }
-  function centerDistance(m, z1, z2) { return m * (z1 + z2) / 2; }
-  function ratio(cfg) { return cfg.zIn / cfg.zSpindle; }           // spindle : input
-  function counterRatio(cfg) { return cfg.zIn / cfg.zCounter; }     // counter : input
-  function inv(a) { return Math.tan(a) - a; }
+  // modul dari jarak sumbu: a = m (z1 + z2) / 2
+  function moduleOf(cfg) { return 2 * cfg.centerDist / (cfg.zA + cfg.zB); }
+  function pitchRadius(cfg, z) { return moduleOf(cfg) * z / 2; }
+  function ratio(cfg) { return cfg.zA / cfg.zB; }            // putaran B per putaran A
 
-  /* Sudut gear yang digerakkan agar gigi masuk tepat ke celah lawan.
-   * phi = arah dari pusat penggerak ke pusat yang digerakkan.
-   * Gigi gear berada di theta + 2πk/z, celah di theta + π/z + 2πk/z. */
-  function meshAngle(thetaDriver, zDriver, zDriven, phi) {
-    return phi + Math.PI - Math.PI / zDriven - (zDriver / zDriven) * (thetaDriver - phi);
-  }
+  /* Model sudah dalam posisi mesh pada sudut 0, jadi gear B cukup berputar
+   * berlawanan arah dengan kecepatan sudut rasio × A. */
+  function angleB(cfg, thetaA) { return -ratio(cfg) * thetaA; }
 
-  // ---------- geometri lilitan ----------
-  function turnsPerLayer(cfg) { return Math.max(1, Math.floor(cfg.slotWidth / cfg.wireD + 1e-9)); }
-  function maxLayers(cfg) { return Math.max(1, Math.floor((cfg.flangeD - cfg.coreD) / 2 / cfg.wireD + 1e-9)); }
-  function capacity(cfg) { return turnsPerLayer(cfg) * maxLayers(cfg); }
-
-  /* Panjang kawat satu alur setelah n lilitan (boleh pecahan).
-   * Lapisan ke-k (mulai 0) punya diameter garis tengah kawat coreD + wireD(2k+1). */
-  function wireLengthPerSlot(cfg, n) {
-    var tpl = turnsPerLayer(cfg), len = 0, k = 0, left = Math.max(0, n);
-    while (left > 1e-12) {
-      var t = Math.min(tpl, left);
-      len += t * Math.PI * (cfg.coreD + cfg.wireD * (2 * k + 1));
-      left -= t; k++;
-    }
-    return len;
-  }
-  function layerOf(cfg, n) { return n <= 0 ? 0 : Math.ceil(n / turnsPerLayer(cfg) - 1e-9); }
-  function buildDiameter(cfg, n) { return cfg.coreD + 2 * cfg.wireD * layerOf(cfg, n); }
-
-  /* Posisi sisir pemandu di dalam alur (0..slotWidth), bolak-balik tiap lapisan. */
-  function traverse(cfg, n) {
-    var tpl = turnsPerLayer(cfg);
-    if (n <= 0) return 0;
-    var layer = Math.floor(n / tpl), inLayer = n - layer * tpl;
-    if (inLayer === 0 && layer > 0) { layer -= 1; inLayer = tpl; }
-    var span = tpl * cfg.wireD;
-    var x = Math.min(span, inLayer * cfg.wireD);
-    var pos = (layer % 2 === 0) ? x : span - x;
-    return Math.min(cfg.slotWidth, Math.max(0, pos));
-  }
-
-  // ---------- state & langkah ----------
   function create(opts) {
-    var cfg = merge(DEFAULTS, opts);
-    cfg.targetTurns = Math.min(cfg.targetTurns, capacity(cfg));
-    return { cfg: cfg, t: 0, thetaIn: 0, running: false, clampClosed: true, done: false };
+    return { cfg: merge(DEFAULTS, opts), t: 0, thetaIn: 0, running: false, clampClosed: true, done: false };
   }
+  function thetaLimit(cfg) { return cfg.targetTurns * TAU; }
+  function turns(s) { return s.thetaIn / TAU; }
 
-  function thetaLimit(cfg) { return cfg.targetTurns * TAU / ratio(cfg); }
-
-  /* Majukan simulasi dt detik. Mengembalikan jumlah lilitan utuh yang baru selesai. */
+  /* Majukan dt detik. Mengembalikan jumlah putaran utuh yang baru selesai. */
   function step(s, dt) {
     var before = Math.floor(turns(s) + 1e-9);
     s.t += dt;
@@ -97,55 +64,33 @@
     }
     return Math.floor(turns(s) + 1e-9) - before;
   }
-
-  function turns(s) { return s.thetaIn * ratio(s.cfg) / TAU; }
-
   function reset(s) { s.t = 0; s.thetaIn = 0; s.running = false; s.done = false; }
 
   function readout(s) {
     var c = s.cfg, r = ratio(c), n = turns(s);
-    var wIn = c.rpmIn * TAU / 60;
     var moving = s.running && s.clampClosed && !s.done;
-    var phiAB = Math.PI / 2; // B tepat di atas A
-    var phiAC = Math.atan2(gearLayout(c).C.v - gearLayout(c).A.v, gearLayout(c).C.u - gearLayout(c).A.u);
+    var w = moving ? c.rpmIn * TAU / 60 : 0;
     return {
       ratio: r,
-      rpmIn: moving ? c.rpmIn : 0,
-      rpmSpindle: moving ? c.rpmIn * r : 0,
-      rpmCounter: moving ? c.rpmIn * counterRatio(c) : 0,
-      meshHz: moving ? c.rpmIn / 60 * c.zIn : 0,
-      pitchVel: moving ? wIn * pitchRadius(c.module, c.zIn) : 0,   // mm/s
+      module: moduleOf(c),
+      rpmA: moving ? c.rpmIn : 0,
+      rpmB: moving ? c.rpmIn * r : 0,
+      meshHz: moving ? c.rpmIn / 60 * c.zA : 0,
+      pitchVel: w * pitchRadius(c, c.zA),                 // mm/s di lingkaran pitch
+      rimVel: w * MODEL.handwheelD / 2,                   // mm/s di tepi handwheel
       thetaA: s.thetaIn,
-      thetaB: meshAngle(s.thetaIn, c.zIn, c.zSpindle, phiAB),
-      thetaC: meshAngle(s.thetaIn, c.zIn, c.zCounter, phiAC),
+      thetaB: angleB(c, s.thetaIn),
       turns: n,
       turnsInt: Math.floor(n + 1e-9),
-      layer: layerOf(c, n),
-      turnsPerLayer: turnsPerLayer(c),
-      buildD: buildDiameter(c, n),
-      wireLenM: wireLengthPerSlot(c, n) * c.slots / 1000,
-      traverse: traverse(c, n),
       progress: n / c.targetTurns,
-      torqueGain: (1 / r) * c.efficiency,    // torsi spindle per torsi input
+      torqueGain: c.efficiency / r,
       done: s.done
     };
   }
 
-  /* Tata letak pusat gear di bidang (u,v) = (z, y) dunia, relatif sumbu input. */
-  function gearLayout(cfg) {
-    var dAB = centerDistance(cfg.module, cfg.zIn, cfg.zSpindle);
-    var dAC = centerDistance(cfg.module, cfg.zIn, cfg.zCounter);
-    var uC = -dAC * Math.cos(Math.PI * 22 / 180); // C di belakang-atas A, 22° di atas horizontal
-    var vC = dAC * Math.sin(Math.PI * 22 / 180);
-    return { A: { u: 0, v: 0 }, B: { u: 0, v: dAB }, C: { u: uC, v: vC }, dAB: dAB, dAC: dAC };
-  }
-
   return {
-    DEFAULTS: DEFAULTS, TAU: TAU,
-    pitchRadius: pitchRadius, centerDistance: centerDistance, ratio: ratio, counterRatio: counterRatio,
-    inv: inv, meshAngle: meshAngle, gearLayout: gearLayout,
-    turnsPerLayer: turnsPerLayer, maxLayers: maxLayers, capacity: capacity,
-    wireLengthPerSlot: wireLengthPerSlot, layerOf: layerOf, buildDiameter: buildDiameter, traverse: traverse,
+    MODEL: MODEL, DEFAULTS: DEFAULTS, TAU: TAU,
+    moduleOf: moduleOf, pitchRadius: pitchRadius, ratio: ratio, angleB: angleB,
     create: create, step: step, turns: turns, reset: reset, readout: readout
   };
 });
