@@ -26,6 +26,8 @@
     slots: [[-9.51, -8.31], [-7.81, -6.01], [-5.51, -3.71], [-3.21, -2.31], [-1.91, -1.01], [-0.51, 1.29], [1.79, 3.59]],
     // dua kawat dililit bersamaan, masing-masing di alur ujung bobbin (seperti foto jig)
     wires: [{ name: 'kiri', slots: [0] }, { name: 'kanan', slots: [6] }],
+    // titik datang kawat relatif sumbu bobbin: dari depan (−x), sedikit di atas flens
+    feed: { dx: -45, dy: 8.39 + 0.6 },
     zA: 10, zB: 10, zC: 10,
     outerR: 6.3,                      // radius kepala gigi terukur
     handwheelD: 60                    // diameter piringan handwheel
@@ -41,7 +43,8 @@
     targetTurns: 100,                 // putaran handwheel (diturunkan dari lilitan per alur)
     wireD: 0.2,
     turnsPerSlot: 20,
-    clampOpenRad: Math.PI / 2          // klem toggle membuka 90°
+    clampOpenRad: Math.PI / 2,         // klem toggle membuka 90°
+    driveDir: -1                       // arah putar handwheel (−1 = searah jarum jam dilihat dari +z) agar kawat tergulung
   };
 
   function merge(a, b) {
@@ -110,6 +113,13 @@
     };
   }
 
+  /* Titik singgung kawat di sisi atas kumparan berjari-jari R (relatif sumbu bobbin). */
+  function wireTangent(R) {
+    var f = MODEL.feed, D = Math.hypot(f.dx, f.dy), base = Math.atan2(f.dy, f.dx), da = Math.acos(Math.min(1, R / D));
+    var ang = Math.sin(base + da) > Math.sin(base - da) ? base + da : base - da;
+    return { x: R * Math.cos(ang), y: R * Math.sin(ang) };
+  }
+
   function create(opts) {
     var cfg = merge(DEFAULTS, opts);
     cfg.turnsPerSlot = Math.max(1, Math.min(cfg.turnsPerSlot, maxTurnsPerSlot(cfg)));
@@ -145,9 +155,9 @@
       meshHz: moving ? c.rpmIn / 60 * c.zA : 0,
       pitchVel: w * pitchRadius(c, c.zA),                 // mm/s di lingkaran pitch
       rimVel: w * MODEL.handwheelD / 2,                   // mm/s di tepi handwheel
-      thetaA: s.thetaIn,
-      thetaB: angleB(c, s.thetaIn),
-      thetaC: angleC(c, s.thetaIn),
+      thetaA: c.driveDir * s.thetaIn,
+      thetaB: angleB(c, c.driveDir * s.thetaIn),
+      thetaC: angleC(c, c.driveDir * s.thetaIn),
       bobbinTurns: n * ratioC(c),
       winding: winding(c, n * ratioC(c)),
       turns: n,
@@ -162,7 +172,7 @@
     MODEL: MODEL, DEFAULTS: DEFAULTS, TAU: TAU,
     moduleOf: moduleOf, pitchRadius: pitchRadius, ratio: ratio, ratioC: ratioC, angleB: angleB, angleC: angleC,
     slotWidth: slotWidth, turnsPerLayer: turnsPerLayer, maxLayers: maxLayers, slotCapacity: slotCapacity,
-    usedSlots: usedSlots, maxTurnsPerSlot: maxTurnsPerSlot, totalTurns: totalTurns, slotLength: slotLength, winding: winding,
+    wireTangent: wireTangent, usedSlots: usedSlots, maxTurnsPerSlot: maxTurnsPerSlot, totalTurns: totalTurns, slotLength: slotLength, winding: winding,
     create: create, step: step, turns: turns, reset: reset, readout: readout
   };
 });

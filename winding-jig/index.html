@@ -315,7 +315,7 @@ function featureEdges(geo, thrDeg){
 // ---------------- kawat & kumparan (objek tambahan, model tidak diubah) ----------------
 var coilGroup = null, coils = [], strands = [];
 // kawat datang mendatar dari sisi depan (−x, menghadap operator), melewati atas flens lalu masuk alur
-var FEED = {dx: -45, dy: MD.flangeR + 0.6};
+var FEED = MD.feed;
 function copperTex(){
   var c = document.createElement('canvas'); c.width = 8; c.height = 16; var g = c.getContext('2d');
   var gr = g.createLinearGradient(0, 0, 0, 16); gr.addColorStop(0, '#6e3410'); gr.addColorStop(.5, '#e39150'); gr.addColorStop(1, '#6e3410');
@@ -346,11 +346,9 @@ function poseCoils(r){
   });
   // tiap kawat menyinggung kumparannya dari atas, datang mendatar dari depan
   w.wires.forEach(function(k, j){
-    var R = Math.max(MD.coreR, w.radii[k.slot]) + d / 2, fx = FEED.dx, fy = FEED.dy, D = Math.hypot(fx, fy);
-    var base = Math.atan2(fy, fx), da = Math.acos(Math.min(1, R / D));
-    var ang = Math.sin(base + da) > Math.sin(base - da) ? base + da : base - da;   // titik singgung sisi atas
-    _a.set(MD.axisC.x + fx, MD.axisC.y + fy, k.layZ);
-    _b.set(MD.axisC.x + R * Math.cos(ang), MD.axisC.y + R * Math.sin(ang), k.layZ);
+    var R = Math.max(MD.coreR, w.radii[k.slot]) + d / 2, T = S.wireTangent(R);   // titik singgung sisi atas
+    _a.set(MD.axisC.x + FEED.dx, MD.axisC.y + FEED.dy, k.layZ);
+    _b.set(MD.axisC.x + T.x, MD.axisC.y + T.y, k.layZ);
     var st = strands[j], len = _a.distanceTo(_b), th = Math.max(0.08, d / 2);
     st.position.copy(_a).add(_b).multiplyScalar(0.5); st.scale.set(th, len, th);
     st.quaternion.setFromUnitVectors(_up, _b.clone().sub(_a).normalize());
@@ -509,7 +507,7 @@ function pose(dt){
   var target = sim.clampClosed ? 0 : -sim.cfg.clampOpenRad;
   clampAngle += (target - clampAngle) * (reduceMotion ? 1 : Math.min(1, dt * 5));
   spin(pivots.K, clampAngle);
-  var tooth = Math.floor(r.thetaA / (TAU / sim.cfg.zA));
+  var tooth = Math.floor(Math.abs(r.thetaA) / (TAU / sim.cfg.zA));
   if (tooth !== lastTooth) { if (r.rpmA > 0 && r.meshHz < 30) Snd.tooth(); lastTooth = tooth; }
 }
 var last = performance.now(), wasDone = false;

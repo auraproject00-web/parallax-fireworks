@@ -160,3 +160,40 @@ test('simulasi berhenti saat kedua alur penuh', () => {
 test('klem toggle membuka 90°', () => {
   near(S.DEFAULTS.clampOpenRad, Math.PI / 2, 1e-12);
 });
+
+// ---------- arah putaran ----------
+// ω (rad/s, + = berlawanan jarum jam dilihat dari +z) tiap poros saat berjalan
+const omegas = (c) => { const wA = c.driveDir * c.rpmIn * 2 * Math.PI / 60; return { A: wA, B: S.angleB(c, wA), C: S.angleC(c, wA) }; };
+const vel = (w, rx, ry) => [-w * ry, w * rx];          // v = ω ẑ × r
+
+test('kecepatan di titik kontak tiap pasang gear sama (tidak saling melawan)', () => {
+  const c = S.DEFAULTS, w = omegas(c), M = S.MODEL;
+  const pair = (P, wP, Q, wQ) => {      // titik kontak di garis sumbu, pada pembagian radius pitch (gigi sama → tengah)
+    const k = { x: (P.x + Q.x) / 2, y: (P.y + Q.y) / 2 };
+    const vP = vel(wP, k.x - P.x, k.y - P.y), vQ = vel(wQ, k.x - Q.x, k.y - Q.y);
+    near(vP[0], vQ[0], 1e-9); near(vP[1], vQ[1], 1e-9);
+  };
+  pair(M.axisA, w.A, M.axisB, w.B);
+  pair(M.axisB, w.B, M.axisC, w.C);
+});
+
+test('bobbin menggulung kawat, bukan mengurai', () => {
+  const c = S.DEFAULTS, w = omegas(c);
+  for (const R of [S.MODEL.coreR, 7, S.MODEL.flangeR]) {
+    const T = S.wireTangent(R), F = { x: S.MODEL.feed.dx, y: S.MODEL.feed.dy };
+    const u = [T.x - F.x, T.y - F.y], L = Math.hypot(u[0], u[1]);
+    const v = vel(w.C, T.x, T.y);
+    // permukaan di titik singgung harus bergerak searah kawat (menjauhi titik datang) → kawat tertarik ke bobbin
+    const along = (v[0] * u[0] + v[1] * u[1]) / L;
+    assert.ok(along > 0, `R=${R} kecepatan sepanjang kawat ${along}`);
+    near(Math.abs(along), Math.abs(w.C) * R, 1e-6, 'kawat menyinggung (tanpa komponen radial)');
+    assert.ok(T.y > 0, 'singgung di sisi atas');
+  }
+});
+
+test('arah readout mengikuti arah penggerak', () => {
+  const s = S.create(); s.running = true; S.step(s, 1);
+  const r = S.readout(s);
+  assert.ok(r.thetaA < 0 && r.thetaB > 0 && r.thetaC < 0, JSON.stringify([r.thetaA, r.thetaB, r.thetaC]));
+  near(r.thetaC, r.thetaA, 1e-12);
+});
