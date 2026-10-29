@@ -3,6 +3,7 @@
   "private": true,
   "scripts": {
     "test": "node --test test/sim.test.js",
-    "shoot": "node test/shoot.js"
+    "shoot": "node test/shoot.js",
+    "video": "node tools/record.js"
   }
 }

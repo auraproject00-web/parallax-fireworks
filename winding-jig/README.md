@@ -21,6 +21,7 @@ Simulasi 3D interaktif jig winding JI9G CMG21. Model 3D dimuat langsung dari exp
 | `test/sim.test.js` | Tes angka simulasi (`node:test`) |
 | `test/shoot.js` | Screenshot Playwright + cek model dan angka HUD vs `sim.js` |
 | `vendor/` | Salinan three.js r128 dan loader-nya untuk tes offline |
+| `tools/record.js` | Rekam simulasi jadi video MP4 1080p/30 fps dengan suara sintesis |
 
 Tekstur `material_3`, `material_18`, `material_19`, dan dua material `Translucent_Glass_Tinted` belum ada; selama foldernya belum ditambahkan, part tersebut memakai warna pengganti. Taruh folder `CMG21-22-25-20 WINDING JIG/` hasil export di dalam `model/`.
 
@@ -29,6 +30,7 @@ Tekstur `material_3`, `material_18`, `material_19`, dan dua material `Translucen
 ```bash
 npm test            # tes simulasi
 npm run shoot       # butuh playwright + chromium; hasil di shots/
+npm run video       # render video/winding-jig.mp4 (butuh playwright + ffmpeg; bisa dilanjutkan bila terputus)
 ```
 
 Buka `index.html` lewat server statis (misalnya `npx serve .`).

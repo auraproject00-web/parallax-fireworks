@@ -185,7 +185,8 @@ var reduceMotion = !!(window.matchMedia && window.matchMedia('(prefers-reduced-m
 
 // ---------------- renderer ----------------
 var stage = $('stage');
-var renderer = new THREE.WebGLRenderer({antialias:true, preserveDrawingBuffer:true});
+var REC = /[?&]rec\b/.test(location.search);   // mode rekam video (lokal): tanpa MSAA, dihaluskan saat encode
+var renderer = new THREE.WebGLRenderer({antialias: !REC, preserveDrawingBuffer:true});
 renderer.setPixelRatio(Math.min(2, window.devicePixelRatio||1));
 stage.insertBefore(renderer.domElement, stage.firstChild);
 var scene = new THREE.Scene(); scene.background = new THREE.Color(0xffffff);
@@ -580,6 +581,7 @@ function pose(dt){
 }
 var last = performance.now(), wasDone = false;
 function frame(now){
+  if (window.__jig && window.__jig.recording) { last = now; requestAnimationFrame(frame); return; }   // perekaman video: frame digerakkan oleh tick()
   var dt = Math.min(0.05, (now - last) / 1000); last = now;
   if (!window.__jig.frozen && S.step(sim, dt) > 0) Snd.turn();   // frozen: waktu dikendalikan tes
   if (sim.done && !wasDone) { Snd.chime(); setStatus(); }
@@ -601,6 +603,11 @@ window.__jig = {
   start: function(){ if (!sim.running) toggleRun(); },
   setView: function(n){ setView(n, true); pose(1); renderer.render(scene, camera); },
   toggleClamp: toggleClamp,
+  /* maju satu frame video secara deterministik: sim + animasi klem + HUD + render */
+  setClampAngle: function(a){ clampAngle = a; },
+  /* posisi kamera langsung (perekaman video), tanpa menyentuh animasi lain */
+  setCam: function(pos, tgt){ camera.position.fromArray(pos); controls.target.fromArray(tgt); camera.lookAt(controls.target); },
+  tick: function(dt){ var n = Math.max(1, Math.ceil(dt * 240)), was = sim.done; for (var i = 0; i < n; i++) S.step(sim, dt / n); if (sim.done !== was) setStatus(); setStatus(); pose(dt); hud(true); renderer.render(scene, camera); return S.readout(sim); },
   closeUp: function(dir, tgt, dist){ var t = new THREE.Vector3().fromArray(tgt); camera.position.copy(new THREE.Vector3().fromArray(dir).normalize().multiplyScalar(dist).add(t)); controls.target.copy(t); controls.update(); pose(1); renderer.render(scene, camera); },
   coilState: function(){
     var ends = strands.map(function(st){ st.updateMatrixWorld(true); return new THREE.Vector3(0, 0.5, 0).applyMatrix4(st.matrixWorld).toArray(); });     // ujung di gulungan
