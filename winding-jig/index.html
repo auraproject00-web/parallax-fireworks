@@ -1,0 +1,629 @@
+<title>Winding Jig JI9G CMG21</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;600&family=Saira+Condensed:wght@500;700&family=Saira+Semi+Condensed:wght@400;500;600&display=swap">
+<style>
+/* Layout: lembar gambar teknik — viewport 3D di dalam bingkai sheet, panel kontrol seperti title block di kanan (bawah di ponsel). */
+:root{
+  --paper:#f4f7f6; --sheet:#ffffff; --ink:#1c2227; --mute:#5b6870; --rule:#c9d2d0;
+  --cyan:#16bfc3; --magenta:#b0168f; --amber:#d9930f; --copper:#b8652a; --ok:#1f8a4c; --warn:#c0392b;
+  --f-display:"Saira Condensed","Arial Narrow",system-ui,sans-serif;
+  --f-body:"Saira Semi Condensed","Segoe UI",system-ui,sans-serif;
+  --f-mono:"IBM Plex Mono",ui-monospace,Menlo,Consolas,monospace;
+  color-scheme:light;
+}
+*{box-sizing:border-box}
+[hidden]{display:none!important}
+html,body{height:100%}
+body{margin:0;background:var(--paper);color:var(--ink);font:15px/1.45 var(--f-body);
+  padding-left:max(16px,env(safe-area-inset-left,0px));padding-right:max(16px,env(safe-area-inset-right,0px));padding-block:12px}
+.app{height:100%;display:grid;grid-template-columns:minmax(0,1fr) 340px;gap:12px}
+.stage{position:relative;min-width:0;background:var(--sheet);border:1.5px solid var(--ink);overflow:hidden}
+.stage canvas{display:block;width:100%;height:100%;touch-action:none;cursor:grab}
+.stage canvas:active{cursor:grabbing}
+.sheet-title{position:absolute;top:10px;left:0;right:0;text-align:center;font:500 13px var(--f-mono);letter-spacing:.08em;pointer-events:none}
+.hint{position:absolute;left:12px;bottom:10px;font:12px var(--f-body);color:var(--mute);pointer-events:none;max-width:60%}
+.views{position:absolute;top:36px;left:12px;display:flex;gap:6px;flex-wrap:wrap}
+.views button{font:600 12px var(--f-display);letter-spacing:.06em;text-transform:uppercase;padding:5px 10px;background:var(--sheet);color:var(--ink);border:1px solid var(--ink);cursor:pointer}
+.views button[aria-pressed="true"]{background:var(--ink);color:var(--sheet)}
+.tblock{position:absolute;right:10px;bottom:10px;border:1.5px solid var(--ink);background:var(--sheet);font:11px var(--f-mono);display:grid;grid-template-columns:auto auto;pointer-events:none}
+.tblock div{padding:3px 8px;border-right:1px solid var(--ink);border-bottom:1px solid var(--ink)}
+.tblock div:nth-child(2n){border-right:0}
+.tblock div:nth-last-child(-n+2){border-bottom:0}
+.tblock .k{color:var(--mute);text-transform:uppercase;letter-spacing:.06em}
+
+.panel{min-width:0;background:var(--sheet);border:1.5px solid var(--ink);display:flex;flex-direction:column;overflow:auto}
+.sec{padding:14px 16px;border-bottom:1px solid var(--rule);display:grid;gap:10px}
+.sec:last-child{border-bottom:0}
+.eyebrow{font:600 11px var(--f-display);letter-spacing:.14em;text-transform:uppercase;color:var(--mute)}
+h1{margin:0;font:700 28px/1 var(--f-display);letter-spacing:.02em;text-wrap:balance}
+.status{justify-self:start;font:600 12px var(--f-display);letter-spacing:.12em;text-transform:uppercase;padding:3px 10px;border:1.5px solid currentColor}
+.status[data-s="run"]{color:var(--ok)} .status[data-s="idle"]{color:var(--mute)}
+.status[data-s="open"]{color:var(--warn)} .status[data-s="done"]{color:var(--magenta)}
+.count{display:flex;align-items:baseline;gap:8px;font-family:var(--f-mono);font-variant-numeric:tabular-nums}
+.count b{font-size:44px;font-weight:600;line-height:1}
+.count span{color:var(--mute)}
+.bar{height:8px;border:1px solid var(--ink);background:var(--paper)}
+.bar i{display:block;height:100%;width:0;background:var(--copper)}
+.grid{display:grid;grid-template-columns:1fr 1fr;gap:0;border:1px solid var(--rule)}
+.cell{padding:7px 9px;border-right:1px solid var(--rule);border-bottom:1px solid var(--rule);min-width:0}
+.cell:nth-child(2n){border-right:0}
+.cell:nth-last-child(-n+2){border-bottom:0}
+.cell .k{font:500 11px var(--f-display);letter-spacing:.08em;text-transform:uppercase;color:var(--mute)}
+.cell .v{font:600 17px var(--f-mono);font-variant-numeric:tabular-nums;white-space:nowrap}
+.cell .v small{font:400 11px var(--f-mono);color:var(--mute);margin-left:3px}
+.btns{display:grid;grid-template-columns:1fr 1fr;gap:8px}
+button.b{font:600 14px var(--f-display);letter-spacing:.08em;text-transform:uppercase;padding:10px 8px;border:1.5px solid var(--ink);background:var(--sheet);color:var(--ink);cursor:pointer}
+button.b.primary{background:var(--ink);color:var(--sheet);grid-column:1/-1;font-size:16px}
+button.b:hover{background:var(--paper)} button.b.primary:hover{background:#000}
+button:focus-visible,input:focus-visible,select:focus-visible{outline:2px solid var(--cyan);outline-offset:2px}
+label.f{display:grid;gap:4px;font:500 12px var(--f-display);letter-spacing:.08em;text-transform:uppercase;color:var(--mute)}
+label.f .row{display:flex;justify-content:space-between;align-items:baseline}
+label.f output{font:600 13px var(--f-mono);color:var(--ink);text-transform:none;letter-spacing:0}
+input[type=range]{width:100%;accent-color:var(--ink)}
+.two{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+input[type=number],select{font:500 14px var(--f-mono);padding:7px 8px;border:1px solid var(--ink);background:var(--sheet);color:var(--ink);width:100%}
+table.gears{width:100%;border-collapse:collapse;font:12px var(--f-mono);font-variant-numeric:tabular-nums}
+table.gears th{font:500 11px var(--f-display);letter-spacing:.08em;text-transform:uppercase;color:var(--mute);text-align:left;border-bottom:1px solid var(--ink);padding:3px 4px}
+table.gears td{padding:4px;border-bottom:1px solid var(--rule)}
+.sw{display:inline-block;width:10px;height:10px;border:1px solid var(--ink);margin-right:5px;vertical-align:-1px}
+p.note{margin:0;font-size:13px;color:var(--mute);max-width:65ch}
+
+@media (max-width:820px){
+  html,body{height:auto}
+  .app{grid-template-columns:minmax(0,1fr);height:auto}
+  .stage{height:62svh;min-height:340px}
+  .tblock{display:none}
+  .hint{max-width:90%}
+}
+@media (prefers-reduced-motion:reduce){*{scroll-behavior:auto}}
+.loading{position:absolute;inset:0;display:grid;place-items:center;font:500 14px var(--f-mono);color:var(--mute);background:var(--sheet);pointer-events:none}
+.flag{border-left:3px solid var(--amber);padding:6px 10px;background:var(--paper);font-size:13px;color:var(--ink);max-width:65ch}
+.flag code{font:12px var(--f-mono)}
+.toggle{display:flex;align-items:center;gap:8px;font:500 13px var(--f-display);letter-spacing:.06em;text-transform:uppercase;cursor:pointer}
+.toggle input{width:18px;height:18px;accent-color:var(--ink)}
+</style>
+
+<div class="app">
+  <div class="stage" id="stage">
+    <div class="sheet-title">WINDING JI9G CMG21</div>
+    <div class="views" role="group" aria-label="Sudut pandang">
+      <button id="v-a" aria-pressed="true">Tampak A</button>
+      <button id="v-b" aria-pressed="false">Tampak B</button>
+      <button id="v-gear" aria-pressed="false">Gear</button>
+      <button id="v-bobbin" aria-pressed="false">Bobbin</button>
+      <button id="v-full" aria-pressed="false">Penuh</button>
+    </div>
+    <div class="loading" id="loading">Memuat model CMG21-22-25-20 (3,9 MB)…</div>
+    <div class="hint" id="hint">Seret untuk memutar · cubit/scroll untuk zoom · ketuk klem krem atau gagang knurling untuk buka/tutup klem</div>
+    <div class="tblock" aria-hidden="true">
+      <div class="k">Model</div><div>CMG21-22-25-20</div>
+      <div class="k">Sumber</div><div>SketchUp .dae</div>
+      <div class="k">Gear</div><div>10T · 10T · 10T</div>
+      <div class="k">Satuan</div><div>mm</div>
+    </div>
+  </div>
+
+  <aside class="panel">
+    <div class="sec">
+      <div class="eyebrow">Winding jig · JI9G CMG21</div>
+      <h1>Simulasi Lilitan</h1>
+      <div class="status" id="status" data-s="idle">Siap</div>
+      <div class="count"><b id="o-turns">0</b><span>/ <span id="o-target">60</span> lilitan per kawat</span></div>
+      <div class="bar"><i id="o-bar"></i></div>
+    </div>
+
+    <div class="sec">
+      <div class="btns">
+        <button class="b primary" id="b-run">Mulai putar</button>
+        <button class="b" id="b-clamp">Buka klem</button>
+        <button class="b" id="b-reset">Reset</button>
+      </div>
+      <label class="f" for="i-rpm"><span class="row">Putaran handwheel <output id="o-rpm-in">30 rpm</output></span>
+        <input type="range" id="i-rpm" min="5" max="120" step="1" value="30"></label>
+      <div class="two">
+        <label class="f" for="i-tps">Lilitan per alur<input type="number" id="i-tps" min="1" max="48" value="20"></label>
+        <label class="f" for="i-wire">Kawat Ø
+          <select id="i-wire"><option value="0.1">0,10 mm</option><option value="0.15">0,15 mm</option><option value="0.2" selected>0,20 mm</option><option value="0.3">0,30 mm</option></select></label>
+      </div>
+      <div class="two">
+        <label class="f" for="i-spw">Alur per kawat
+          <select id="i-spw"><option value="1">1 alur</option><option value="2">2 alur</option><option value="3" selected>3 alur</option></select></label>
+        <button class="b" id="b-sound" aria-pressed="false">Suara: mati</button>
+      </div>
+      <label class="toggle" for="i-xray"><input type="checkbox" id="i-xray"> Tembus pandang (lihat gear dan bobbin)</label>
+    </div>
+
+    <div class="sec">
+      <div class="eyebrow">Pembacaan</div>
+      <div class="grid">
+        <div class="cell"><div class="k">Handwheel</div><div class="v" id="o-rpmA">0<small>rpm</small></div></div>
+        <div class="cell"><div class="k">Gear atas</div><div class="v" id="o-rpmB">0<small>rpm</small></div></div>
+        <div class="cell"><div class="k">Bobbin</div><div class="v" id="o-rpmC">0<small>rpm</small></div></div>
+        <div class="cell"><div class="k">Putaran bobbin</div><div class="v" id="o-bob">0</div></div>
+        <div class="cell"><div class="k">Rasio</div><div class="v" id="o-ratio">1 : 1</div></div>
+        <div class="cell"><div class="k">Modul</div><div class="v" id="o-mod">1.09<small>mm</small></div></div>
+        <div class="cell"><div class="k">Frek. mesh</div><div class="v" id="o-mesh">0.0<small>Hz</small></div></div>
+        <div class="cell"><div class="k">V pitch</div><div class="v" id="o-vp">0.0<small>mm/s</small></div></div>
+        <div class="cell"><div class="k">V tepi handwheel</div><div class="v" id="o-rim">0<small>mm/s</small></div></div>
+        <div class="cell"><div class="k">Klem</div><div class="v" id="o-clamp">Tutup</div></div>
+        <div class="cell"><div class="k">Alur dililit</div><div class="v" id="o-slot">1 · 7<small>/ 7</small></div></div>
+        <div class="cell"><div class="k">Lapisan</div><div class="v" id="o-layer">0<small>/ 12</small></div></div>
+        <div class="cell"><div class="k">Ø tumpukan</div><div class="v" id="o-build">11.78<small>mm</small></div></div>
+        <div class="cell"><div class="k">Kawat terpakai</div><div class="v" id="o-len">0.000<small>m · 2 kawat</small></div></div>
+      </div>
+    </div>
+
+    <div class="sec">
+      <div class="eyebrow">Gear di model</div>
+      <table class="gears">
+        <thead><tr><th>Part</th><th>z</th><th>Ø pitch</th><th>Pusat Y</th></tr></thead>
+        <tbody>
+          <tr><td>Gear bawah · group_28</td><td>10</td><td>10.9</td><td>108.12</td></tr>
+          <tr><td>Gear atas · group_30</td><td>10</td><td>10.9</td><td>119.02</td></tr>
+          <tr><td>Gear bobbin · group_33</td><td>10</td><td>10.0</td><td>129.46</td></tr>
+        </tbody>
+      </table>
+      <p class="note">Jumlah gigi dan posisi diukur dari vertex model. Rantainya handwheel → gear bawah → gear atas → bobbin, semua 1 : 1. Dua kawat dililit bersamaan: kiri alur 1→2→3, kanan 7→6→5. Setelah satu alur penuh, kawat pindah ke alur berikutnya lewat coakan di flens. Gear atas berputar berlawanan arah, sehingga bobbin berputar searah handwheel. Poros terkunci selama klem terbuka.</p>
+      <div class="flag" id="flag" hidden></div>
+    </div>
+  </aside>
+</div>
+
+<script src="https://cdn.jsdelivr.net/npm/three@0.128.0/build/three.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/controls/OrbitControls.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/loaders/TGALoader.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/loaders/ColladaLoader.js"></script>
+<script src="sim.js"></script>
+<script>
+(function(){
+'use strict';
+var S = window.JigSim, TAU = Math.PI*2, MD = S.MODEL;
+var sim = S.create({});
+var $ = function(id){ return document.getElementById(id); };
+var reduceMotion = !!(window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches);
+
+// ---------------- renderer ----------------
+var stage = $('stage');
+var REC = /[?&]rec\b/.test(location.search);   // mode rekam video (lokal): tanpa MSAA, dihaluskan saat encode
+var renderer = new THREE.WebGLRenderer({antialias: !REC, preserveDrawingBuffer:true});
+renderer.setPixelRatio(Math.min(2, window.devicePixelRatio||1));
+stage.insertBefore(renderer.domElement, stage.firstChild);
+var scene = new THREE.Scene(); scene.background = new THREE.Color(0xffffff);
+var camera = new THREE.PerspectiveCamera(32, 1, 1, 6000);
+var controls = new THREE.OrbitControls(camera, renderer.domElement);
+controls.enableDamping = true; controls.dampingFactor = 0.08; controls.minDistance = 40; controls.maxDistance = 1500;
+scene.add(new THREE.HemisphereLight(0xffffff, 0xb7c2c6, 0.8));
+var sun = new THREE.DirectionalLight(0xffffff, 0.5); sun.position.set(200, 400, 300); scene.add(sun);
+var fill = new THREE.DirectionalLight(0xffffff, 0.25); fill.position.set(-300, 150, -250); scene.add(fill);
+
+function resize(){ var w=stage.clientWidth, h=stage.clientHeight; renderer.setSize(w,h,false); camera.aspect=w/h; camera.updateProjectionMatrix(); }
+window.addEventListener('resize', resize); resize();
+
+// ---------------- model ----------------
+// Tekstur yang tidak ikut terkirim diganti warna polos. Geometri tidak diubah.
+var FALLBACK = {
+  'Translucent_Glass_Tinted':     {color:0x4ab6e4, opacity:0.5},
+  '__Translucent_Glass_Tinted_1': {color:0xcfe8ef, opacity:0.45},
+  'material_3':  {color:0xc3c8ce},
+  'material_18': {color:0x3a3a3a},
+  'material_19': {color:0x2b2b2b}
+};
+var LINE = new THREE.LineBasicMaterial({color:0x111111});
+var LINE_S = new THREE.LineBasicMaterial({color:0x111111, transparent:true, opacity:1});   // garis selain gear (dipudarkan saat tembus pandang)
+var model = null, pivots = {}, movingMeshes = [], gearMeshes = [], bobbinMeshes = [], keepSolid = [], staticMats = [], clampMeshes = [], info = {fallbacks:[], found:{}};
+var manager = new THREE.LoadingManager(), failedUrls = [];
+manager.onError = function(url){ failedUrls.push(url); };
+var readyResolve; var ready = new Promise(function(r){ readyResolve = r; });
+
+new THREE.ColladaLoader(manager).load('model/jig.xml', function(c){
+  var wrap = new THREE.Group(); wrap.scale.setScalar(1000);      // meter → mm
+  wrap.add(c.scene); scene.add(wrap); wrap.updateMatrixWorld(true);
+  model = wrap;
+  var sk = c.scene.getObjectByName('SketchUp') || c.scene;
+
+  // gaya SketchUp: dua sisi + garis tepi (overlay, geometri tetap)
+  wrap.traverse(function(o){
+    if (o.isMesh) {
+      [].concat(o.material).forEach(function(m){ m.side = THREE.DoubleSide; m.polygonOffset = true; m.polygonOffsetFactor = 1; m.polygonOffsetUnits = 1; });
+      var eg = featureEdges(o.geometry, 30); if (eg) { var e = new THREE.LineSegments(eg, LINE); e.renderOrder = 1; o.add(e); }
+    }
+  });
+
+  // poros putar: handwheel + hub + poros + gear bawah; gear atas; klem
+  var hw = [];
+  sk.children.forEach(function(o){ if (o.isMesh && [].concat(o.material).some(function(m){ return m.name === 'Translucent_Glass_Tinted'; })) hw.push(o); });
+  info.found.handwheelMeshes = hw.length;
+  function g(n){ var o = sk.getObjectByName(n); info.found[n] = !!o; return o; }
+  pivots.A = makePivot(sk, hw.concat([g('group_57'), g('group_60'), g('group_28')]).filter(Boolean), MD.axisA);
+  pivots.B = makePivot(sk, [g('group_30')].filter(Boolean), MD.axisB);
+  // drum bobbin digerakkan gear atas. Hanya bagian bulat yang berputar; braket group_41 tetap diam.
+  info.found.group_32 = !!g('group_32');
+  pivots.C = makePivot(sk, ['group_33','group_40','group_42','group_43'].map(g).filter(Boolean), MD.axisC);
+  pivots.C.traverse(function(o){ if (o.isMesh) bobbinMeshes.push(o); });
+  // garis tepi sirip bobbin terputus-putus dan berkedip saat berputar, jadi tidak digambar
+  bobbinMeshes.forEach(function(o){ o.children.filter(function(k){ return k.isLineSegments; }).forEach(function(k){ o.remove(k); k.geometry.dispose(); }); });
+  buildCoils();
+  pivots.K = makePivot(sk, [g('group_62')].filter(Boolean), MD.hinge);
+  [pivots.A, pivots.B, pivots.C, pivots.K].forEach(function(p){ p.traverse(function(o){ if (o.isMesh) movingMeshes.push(o); }); });
+  wrap.traverse(function(o){ if (o.isLineSegments && o.material === LINE && gearMeshes.indexOf(o.parent) < 0) o.material = LINE_S; });
+  pivots.K.traverse(function(o){ if (o.isMesh) clampMeshes.push(o); });
+  ['group_28','group_30','group_33'].forEach(function(n){ var o = sk.getObjectByName(n); if (o) o.traverse(function(k){ if (k.isMesh) gearMeshes.push(k); }); });
+  // material bobbin & gear dipisah supaya tidak ikut pudar saat tembus pandang (warna tetap sama)
+  gearMeshes.concat(bobbinMeshes).filter(function(o, i, all){ return all.indexOf(o) === i; }).forEach(function(o){ o.material = Array.isArray(o.material) ? o.material.map(function(m){ return m.clone(); }) : o.material.clone(); });
+  installNotchShader(); rebuildNotches();
+
+  var box = new THREE.Box3().setFromObject(wrap);
+  info.box = {min: box.min.toArray(), max: box.max.toArray()};
+  var grid = new THREE.GridHelper(1200, 120, 0xd3dbda, 0xe8eded); grid.position.y = box.min.y - 0.1; scene.add(grid);
+
+  $('loading').hidden = true;
+  setView('a', true);
+  readyResolve();
+}, function(xhr){
+  if (xhr && xhr.total) $('loading').textContent = 'Memuat model… ' + Math.round(xhr.loaded / xhr.total * 100) + '%';
+}, function(err){
+  $('loading').textContent = 'Model gagal dimuat. Pastikan file model/jig.xml ikut diunggah bersama halaman ini.';
+});
+
+// setelah semua file (termasuk tekstur) selesai dicoba
+manager.onLoad = function(){ applyFallbacks(); };
+function applyFallbacks(){
+  if (!model) return;
+  var done = {};
+  model.traverse(function(o){
+    if (!o.isMesh) return;
+    [].concat(o.material).forEach(function(m){
+      if (m.map && !(m.map.image && m.map.image.width)) {
+        var f = FALLBACK[m.name] || {color:0x9a9a9a};
+        m.map = null; m.color.setHex(f.color);
+        if (f.opacity) { m.transparent = true; m.opacity = f.opacity; m.depthWrite = false; }
+        m.needsUpdate = true; done[m.name] = true;
+      }
+    });
+  });
+  info.fallbacks = Object.keys(done);
+  if (info.fallbacks.length) {
+    var fl = $('flag'); fl.hidden = false;
+    fl.innerHTML = 'Tekstur <code>' + info.fallbacks.join('</code>, <code>') + '</code> tidak ikut terkirim, jadi part itu memakai warna pengganti. Kirim folder <code>CMG21-22-25-20 WINDING JIG</code> hasil export agar warnanya sama persis.';
+  }
+}
+
+/* Garis tepi gaya SketchUp. Muka ganda (normal terbalik) dianggap satu bidang,
+ * jadi hanya sudut tajam > thr yang digambar. */
+function featureEdges(geo, thrDeg){
+  var P = geo.attributes.position; if (!P) return null;
+  var I = geo.index ? geo.index.array : null, n = I ? I.length : P.count;
+  var cosT = Math.cos(thrDeg * Math.PI / 180), q = 1e4, keys = new Array(P.count), map = new Map(), out = [];
+  for (var i = 0; i < P.count; i++) keys[i] = Math.round(P.getX(i)*q) + ',' + Math.round(P.getY(i)*q) + ',' + Math.round(P.getZ(i)*q);
+  var a = new THREE.Vector3(), b = new THREE.Vector3(), c = new THREE.Vector3(), nrm = new THREE.Vector3();
+  for (var t = 0; t + 2 < n; t += 3) {
+    var ia = I ? I[t] : t, ib = I ? I[t+1] : t+1, ic = I ? I[t+2] : t+2;
+    a.fromBufferAttribute(P, ia); b.fromBufferAttribute(P, ib); c.fromBufferAttribute(P, ic);
+    nrm.subVectors(c, b).cross(b.clone().sub(a)); var L = nrm.length(); if (L < 1e-12) continue; nrm.divideScalar(L);
+    var tri = [[ia, keys[ia]], [ib, keys[ib]], [ic, keys[ic]]];
+    for (var k = 0; k < 3; k++) {
+      var u = tri[k], v = tri[(k+1)%3]; if (u[1] === v[1]) continue;
+      var key = u[1] < v[1] ? u[1] + '|' + v[1] : v[1] + '|' + u[1];
+      var e = map.get(key); if (!e) { e = {i: u[0], j: v[0], ns: []}; map.set(key, e); }
+      var dup = false; for (var m = 0; m < e.ns.length; m++) if (Math.abs(e.ns[m].dot(nrm)) > 0.9999) { dup = true; break; }
+      if (!dup) e.ns.push(nrm.clone());
+    }
+  }
+  map.forEach(function(e){
+    var draw = false;   // tepi terbuka dilewati: di export SketchUp itu biasanya sisa T-junction triangulasi
+    for (var x = 0; !draw && x < e.ns.length; x++) for (var y = x + 1; y < e.ns.length; y++) if (Math.abs(e.ns[x].dot(e.ns[y])) < cosT) { draw = true; break; }
+    if (draw) out.push(P.getX(e.i), P.getY(e.i), P.getZ(e.i), P.getX(e.j), P.getY(e.j), P.getZ(e.j));
+  });
+  var g = new THREE.BufferGeometry(); g.setAttribute('position', new THREE.Float32BufferAttribute(out, 3)); return g;
+}
+
+// ---------------- kawat & kumparan (objek tambahan, model tidak diubah) ----------------
+var coilGroup = null, coils = [], strands = [], wireMat = null, notchGroup = null, notchU = null;
+var FEED = MD.feed, SEG_PER_TURN = 96, RADIAL = 8;
+/* Kurva garis tengah satu helai kawat (semua alurnya + perpindahan lewat coakan),
+ * parameter t ∈ [0,1] ↔ s ∈ [0, sMax] putaran bobbin (bukan panjang busur, supaya drawRange
+ * bisa membuka kawat tepat sejauh bobbin berputar). */
+class WireCurve extends THREE.Curve {
+  constructor(cfg, wi){ super(); this.cfg = cfg; this.wi = wi; this.segs = S.schedule(cfg, wi); this.sMax = this.segs[this.segs.length - 1].s1; }
+  getPoint(t, target){ var p = S.wirePathW(this.cfg, this.wi, t * this.sMax, this.segs); return (target || new THREE.Vector3()).set(p.r * Math.cos(p.phi), p.r * Math.sin(p.phi), p.z); }
+  getPointAt(t, target){ return this.getPoint(t, target); }
+  getTangentAt(t, target){ return this.getTangent(t, target); }
+}
+function buildCoils(){
+  coilGroup = new THREE.Group(); coilGroup.position.set(MD.axisC.x, MD.axisC.y, 0); scene.add(coilGroup);
+  wireMat = new THREE.MeshPhongMaterial({color: 0xb8622a, specular: 0xffc896, shininess: 90});   // tembaga berlapis email
+  MD.wires.forEach(function(){
+    var st = new THREE.Mesh(new THREE.CylinderGeometry(1, 1, 1, RADIAL), wireMat);
+    scene.add(st); strands.push(st);
+  });
+  rebuildCoils();
+}
+/* Bangun ulang tabung kawat tiap helai (saat mulai atau setelan berubah). */
+function rebuildCoils(){
+  if (!coilGroup) return;
+  coils.forEach(function(m){ coilGroup.remove(m); m.geometry.dispose(); });
+  coils = MD.wires.map(function(w, wi){
+    var curve = new WireCurve(sim.cfg, wi), sMax = curve.sMax;
+    // 96 segmen per putaran, dikurangi bila putaran banyak supaya geometri tetap ringan (maks ±12.000 segmen)
+    var perTurn = Math.max(32, Math.min(SEG_PER_TURN, Math.floor(12000 / sMax)));
+    var segs = Math.max(8, Math.ceil(sMax * perTurn));
+    var geo = new THREE.TubeGeometry(curve, segs, sim.cfg.wireD / 2, RADIAL, false);
+    geo.setDrawRange(0, 0);
+    var m = new THREE.Mesh(geo, wireMat); m.userData = {curve: curve, segs: segs, sMax: sMax, shown: 0};
+    coilGroup.add(m); return m;
+  });
+  rebuildNotches();
+}
+
+/* ---------- coakan flens ----------
+ * Flens yang dilewati kawat diberi coakan selebar jendela lintasan (S.notchHalfAngle) sampai ke inti.
+ * Material bobbin membuang fragmen di daerah coakan; dinding & dasar coakan ditambahkan sebagai mesh. */
+function notchFlanges(){
+  var f = [];
+  MD.wires.forEach(function(w, wi){ S.schedule(sim.cfg, wi).forEach(function(g){ if (g.type === 'cross' && f.indexOf(g.flange) < 0) f.push(g.flange); }); });
+  return f.sort(function(a, b){ return a - b; });
+}
+function installNotchShader(){
+  notchU = { uNC: {value: new THREE.Vector2(MD.axisC.x, MD.axisC.y)}, uNTheta: {value: 0}, uNAng: {value: MD.notchAngle},
+             uNHW: {value: S.notchHalfAngle()}, uNCore: {value: MD.coreR}, uNBands: {value: [0, 0, 0, 0, 0, 0, 0, 0].map(function(){ return new THREE.Vector2(1e3, 1e3); })} };
+  bobbinMeshes.forEach(function(o){
+    [].concat(o.material).forEach(function(m){
+      m.onBeforeCompile = function(sh){
+        Object.keys(notchU).forEach(function(k){ sh.uniforms[k] = notchU[k]; });
+        sh.vertexShader = 'varying vec3 vNWP;\n' + sh.vertexShader.replace('#include <project_vertex>', '#include <project_vertex>\n  vNWP = (modelMatrix * vec4(transformed, 1.0)).xyz;');
+        sh.fragmentShader = 'varying vec3 vNWP;\nuniform vec2 uNC; uniform float uNTheta, uNAng, uNHW, uNCore; uniform vec2 uNBands[8];\n' +
+          sh.fragmentShader.replace('#include <clipping_planes_fragment>', '#include <clipping_planes_fragment>\n' +
+          '  { vec2 q = vNWP.xy - uNC; float rr = length(q); float a = atan(q.y, q.x) - uNTheta - uNAng; a = atan(sin(a), cos(a));\n' +
+          '    if (rr > uNCore + 0.004 && abs(a) < uNHW) { for (int i = 0; i < 8; i++) { if (vNWP.z > uNBands[i].x - 0.004 && vNWP.z < uNBands[i].y + 0.004) discard; } } }');
+      };
+      m.customProgramCacheKey = function(){ return 'notch'; };
+      m.needsUpdate = true;
+    });
+  });
+}
+function rebuildNotches(){
+  if (!notchU || !coilGroup) return;
+  var fl = notchFlanges(), hw = S.notchHalfAngle(), a0 = MD.notchAngle - hw, a1 = MD.notchAngle + hw, R0 = MD.coreR, R1 = MD.flangeR + 0.05;
+  notchU.uNBands.value.forEach(function(v, i){ var f = MD.flanges[fl[i]]; if (f) v.set(f[0], f[1]); else v.set(1e3, 1e3); });
+  if (notchGroup) { coilGroup.remove(notchGroup); notchGroup.traverse(function(o){ if (o.geometry) o.geometry.dispose(); }); }
+  notchGroup = new THREE.Group(); coilGroup.add(notchGroup);
+  var mat = new THREE.MeshLambertMaterial({color: 0x9aa3ab, side: THREE.DoubleSide});   // bayangan di dalam coakan supaya terbaca
+  fl.forEach(function(k){
+    var z0 = MD.flanges[k][0], z1 = MD.flanges[k][1], pos = [], N = 10, P = function(r, a, z){ pos.push(r * Math.cos(a), r * Math.sin(a), z); };
+    [a0, a1].forEach(function(a){ P(R0, a, z0); P(R1, a, z0); P(R1, a, z1); P(R0, a, z0); P(R1, a, z1); P(R0, a, z1); });     // dinding samping
+    for (var i = 0; i < N; i++) { var b0 = a0 + (a1 - a0) * i / N, b1 = a0 + (a1 - a0) * (i + 1) / N;                        // dasar (permukaan inti)
+      P(R0, b0, z0); P(R0, b1, z0); P(R0, b1, z1); P(R0, b0, z0); P(R0, b1, z1); P(R0, b0, z1); }
+    var g = new THREE.BufferGeometry(); g.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3)); g.computeVertexNormals();
+    var m = new THREE.Mesh(g, mat); m.userData.flange = k; notchGroup.add(m);
+    var e = new THREE.LineSegments(new THREE.EdgesGeometry(g, 30), LINE); m.add(e);
+  });
+}
+
+var _a = new THREE.Vector3(), _b = new THREE.Vector3(), _up = new THREE.Vector3(0, 1, 0);
+function poseCoils(r){
+  if (!coilGroup) return;
+  var w = r.winding, d = sim.cfg.wireD;
+  coilGroup.rotation.z = r.thetaC;
+  coilGroup.updateMatrixWorld(true);
+  if (notchU) notchU.uNTheta.value = r.thetaC;
+  w.wires.forEach(function(k, j){
+    var m = coils[j], u = m.userData;
+    // buka tabung sampai putaran bobbin sekarang (dibulatkan ke bawah per segmen)
+    var seg = Math.min(u.segs, Math.floor(Math.min(r.bobbinTurns, u.sMax) / u.sMax * u.segs + 1e-9));
+    u.shown = seg; m.geometry.setDrawRange(0, seg * RADIAL * 6);
+    // kawat masuk: dari titik datang ke ujung tabung yang terlihat, jadi selalu tersambung
+    _a.set(MD.axisC.x + FEED.dx, MD.axisC.y + FEED.dy, k.layZ);
+    if (seg > 0) { u.curve.getPoint(seg / u.segs, _b); coilGroup.localToWorld(_b); }
+    else { var T = S.wireTangent(k.r); _b.set(MD.axisC.x + T.x, MD.axisC.y + T.y, k.layZ); }
+    var st = strands[j], len = _a.distanceTo(_b);
+    st.position.copy(_a).add(_b).multiplyScalar(0.5); st.scale.set(d / 2, len, d / 2);
+    st.quaternion.setFromUnitVectors(_up, _b.clone().sub(_a).normalize());
+  });
+}
+
+function makePivot(parent, nodes, axisPt){
+  var piv = new THREE.Group(); parent.add(piv); parent.updateMatrixWorld(true);
+  piv.position.copy(parent.worldToLocal(new THREE.Vector3(axisPt.x, axisPt.y, 0)));
+  piv.updateMatrixWorld(true);
+  nodes.forEach(function(n){ piv.attach(n); });
+  var inv = new THREE.Matrix4().copy(parent.matrixWorld).invert();
+  piv.userData.axis = new THREE.Vector3(0,0,1).transformDirection(inv);
+  return piv;
+}
+function spin(p, a){ if (p) p.quaternion.setFromAxisAngle(p.userData.axis, a); }
+
+// tembus pandang: part diam dibuat transparan supaya gear terlihat
+var xray = false;
+function setXray(v, keep){
+  xray = v; $('i-xray').checked = v;
+  keepSolid = keep === 'bobbin' ? gearMeshes.concat(bobbinMeshes) : gearMeshes;
+  model && model.traverse(function(o){ if (o.isLineSegments) o.material = keepSolid.indexOf(o.parent) >= 0 ? LINE : LINE_S; });
+  LINE_S.opacity = v ? 0.08 : 1;
+  if (!model) return;
+  model.traverse(function(o){
+    if (!o.isMesh || keepSolid.indexOf(o) >= 0) return;
+    [].concat(o.material).forEach(function(m){
+      if (m.userData.base === undefined) m.userData.base = {t:m.transparent, o:m.opacity, d:m.depthWrite};
+      var b = m.userData.base;
+      if (v) { m.transparent = true; m.opacity = Math.min(b.o, 0.14); m.depthWrite = false; }
+      else { m.transparent = b.t; m.opacity = b.o; m.depthWrite = b.d; }
+      m.needsUpdate = true;
+    });
+  });
+}
+$('i-xray').addEventListener('change', function(e){ var cur = document.querySelector('.views button[aria-pressed="true"]'); setXray(e.target.checked, cur && cur.id === 'v-bobbin' ? 'bobbin' : 'gear'); });
+
+// ---------------- kamera ----------------
+var VIEWS = {
+  a:    {dir:[0.55,0.62,1],   tgt:[38,105,-8],  dist:300},
+  b:    {dir:[-0.6,0.55,-1],  tgt:[38,105,-25], dist:300},
+  gear: {dir:[0.5,0.3,1],     tgt:[30,113.5,6], dist:80, xray:true},
+  bobbin: {dir:[-0.35,1,0.2], tgt:[29.6,133,-3], dist:40, xray:'bobbin'},
+  full: {dir:[1,0.7,0.9],     tgt:[24,60,-95],  dist:620}
+};
+var camAnim = null;
+function setView(name, instant){
+  var v = VIEWS[name], k = Math.max(1, 1.15 / camera.aspect);
+  var tgt = new THREE.Vector3().fromArray(v.tgt);
+  var pos = new THREE.Vector3().fromArray(v.dir).normalize().multiplyScalar(v.dist * k).add(tgt);
+  document.querySelectorAll('.views button').forEach(function(b){ b.setAttribute('aria-pressed', String(b.id === 'v-' + name)); });
+  setXray(!!v.xray, v.xray);
+  if (instant || reduceMotion) { camera.position.copy(pos); controls.target.copy(tgt); controls.update(); camAnim = null; return; }
+  camAnim = {t:0, p0:camera.position.clone(), t0:controls.target.clone(), p1:pos, t1:tgt};
+}
+['a','b','gear','bobbin','full'].forEach(function(n){ $('v-' + n).addEventListener('click', function(){ setView(n); }); });
+
+// ---------------- audio (Web Audio, sintesis) ----------------
+var Snd = {ctx:null, on:false,
+  init:function(){
+    if (this.ctx) return; var AC = window.AudioContext || window.webkitAudioContext; if (!AC) return;
+    var c = this.ctx = new AC(); this.master = c.createGain(); this.master.gain.value = 0; this.master.connect(c.destination);
+    var len = c.sampleRate * 2, buf = c.createBuffer(1, len, c.sampleRate), d = buf.getChannelData(0); for (var i = 0; i < len; i++) d[i] = Math.random() * 2 - 1;
+    this.noiseBuf = buf;
+    this.noise = c.createBufferSource(); this.noise.buffer = buf; this.noise.loop = true;
+    this.lp = c.createBiquadFilter(); this.lp.type = 'lowpass'; this.lp.frequency.value = 300;
+    this.hiss = c.createGain(); this.hiss.gain.value = 0;
+    this.noise.connect(this.lp); this.lp.connect(this.hiss); this.hiss.connect(this.master); this.noise.start();
+  },
+  setOn:function(v){ this.on = v; if (v) { this.init(); if (!this.ctx) return; this.ctx.resume(); } if (this.ctx) this.master.gain.setTargetAtTime(v ? 0.55 : 0, this.ctx.currentTime, 0.05); },
+  update:function(r){ if (!this.ctx || !this.on) return; var t = this.ctx.currentTime, run = r.rpmA > 0;
+    this.lp.frequency.setTargetAtTime(200 + r.rpmA * 6, t, 0.1);
+    this.hiss.gain.setTargetAtTime(run ? 0.025 + 0.0003 * r.rpmA : 0, t, 0.08); },
+  burst:function(freq, q, dur, vol){ if (!this.ctx || !this.on) return; var c = this.ctx, t = c.currentTime;
+    var n = c.createBufferSource(), f = c.createBiquadFilter(), g = c.createGain();
+    n.buffer = this.noiseBuf; f.type = 'bandpass'; f.frequency.value = freq; f.Q.value = q;
+    g.gain.setValueAtTime(vol, t); g.gain.exponentialRampToValueAtTime(0.0001, t + dur);
+    n.connect(f); f.connect(g); g.connect(this.master); n.start(t, Math.random()); n.stop(t + dur + 0.02); },
+  blip:function(freq, dur, vol){ if (!this.ctx || !this.on) return; var c = this.ctx, t = c.currentTime, o = c.createOscillator(), g = c.createGain();
+    o.frequency.value = freq; g.gain.setValueAtTime(vol, t); g.gain.exponentialRampToValueAtTime(0.0001, t + dur); o.connect(g); g.connect(this.master); o.start(t); o.stop(t + dur + 0.02); return o; },
+  tooth:function(){ this.burst(2600 + Math.random() * 400, 6, 0.025, 0.5); },          // gigi masuk mesh
+  turn:function(){ this.blip(1480, 0.06, 0.12); },                                     // satu putaran
+  clunk:function(){ var o = this.blip(160, 0.2, 0.5); if (o) o.frequency.exponentialRampToValueAtTime(55, this.ctx.currentTime + 0.16); this.burst(3500, 1, 0.06, 0.4); },
+  chime:function(){ var s = this; this.blip(880, 0.9, 0.18); setTimeout(function(){ s.blip(1318.5, 1.1, 0.16); }, 140); }
+};
+
+// ---------------- UI ----------------
+function setStatus(){
+  var st = $('status'), s;
+  if (sim.done) s = ['done','Selesai'];
+  else if (!sim.clampClosed) s = ['open','Klem terbuka'];
+  else if (sim.running) s = ['run','Berputar'];
+  else s = ['idle', S.turns(sim) > 0 ? 'Jeda' : 'Siap'];
+  st.dataset.s = s[0]; st.textContent = s[1];
+  $('b-run').textContent = sim.done ? 'Putar ulang' : (sim.running ? 'Jeda' : (S.turns(sim) > 0 ? 'Lanjutkan' : 'Mulai putar'));
+  $('b-clamp').textContent = sim.clampClosed ? 'Buka klem' : 'Tutup klem';
+  $('o-clamp').textContent = sim.clampClosed ? 'Tutup' : 'Buka';
+}
+function toggleRun(){
+  if (Snd.ctx) Snd.ctx.resume();
+  if (sim.done) S.reset(sim);
+  if (!sim.clampClosed && !sim.running) { sim.clampClosed = true; Snd.clunk(); }
+  sim.running = !sim.running; setStatus(); hud(true);
+}
+function toggleClamp(){ sim.clampClosed = !sim.clampClosed; if (!sim.clampClosed) sim.running = false; Snd.clunk(); setStatus(); hud(true); }
+$('b-run').addEventListener('click', toggleRun);
+$('b-clamp').addEventListener('click', toggleClamp);
+$('b-reset').addEventListener('click', function(){ S.reset(sim); setStatus(); hud(true); });
+$('i-rpm').addEventListener('input', function(e){ sim.cfg.rpmIn = +e.target.value; $('o-rpm-in').textContent = e.target.value + ' rpm'; hud(true); });
+function rebuildSim(){
+  var cc = sim.clampClosed;
+  sim = S.create({rpmIn: +$('i-rpm').value, wireD: +$('i-wire').value, slotsPerWire: +$('i-spw').value, turnsPerSlot: Math.max(1, Math.round(+$('i-tps').value || 1))});
+  sim.clampClosed = cc;
+  var cap = S.maxTurnsPerSlot(sim.cfg); $('i-tps').max = cap; $('i-tps').value = sim.cfg.turnsPerSlot;
+  rebuildCoils(); setStatus(); pose(1); hud(true);
+}
+$('i-tps').addEventListener('change', rebuildSim);
+$('i-wire').addEventListener('change', rebuildSim);
+$('i-spw').addEventListener('change', rebuildSim);
+$('b-sound').addEventListener('click', function(e){ var v = !Snd.on; Snd.setOn(v); e.currentTarget.setAttribute('aria-pressed', String(v)); e.currentTarget.textContent = 'Suara: ' + (v ? 'hidup' : 'mati'); });
+document.addEventListener('keydown', function(e){ if (e.code === 'Space' && e.target === document.body) { e.preventDefault(); toggleRun(); } });
+
+var ray = new THREE.Raycaster(), ndc = new THREE.Vector2(), downAt = null;
+renderer.domElement.addEventListener('pointerdown', function(e){ downAt = [e.clientX, e.clientY]; });
+renderer.domElement.addEventListener('pointerup', function(e){
+  if (!downAt || Math.hypot(e.clientX - downAt[0], e.clientY - downAt[1]) > 6 || !clampMeshes.length) return;
+  var rc = renderer.domElement.getBoundingClientRect(); ndc.set((e.clientX - rc.left) / rc.width * 2 - 1, -(e.clientY - rc.top) / rc.height * 2 + 1);
+  ray.setFromCamera(ndc, camera);
+  if (ray.intersectObjects(clampMeshes, false).length) toggleClamp();
+});
+
+var lastHud = 0;
+function setV(id, val, unit){ $(id).innerHTML = val + '<small>' + unit + '</small>'; }
+function hud(force){
+  var now = performance.now(); if (!force && now - lastHud < 90) return; lastHud = now;
+  var r = S.readout(sim);
+  var w = r.winding, total = S.totalTurns(sim.cfg);
+  var perWire = S.wireSlots(sim.cfg, 0).reduce(function(acc, si){ return acc + w.fills[si]; }, 0);
+  $('o-turns').textContent = Math.floor(perWire + 1e-9); $('o-target').textContent = sim.cfg.turnsPerSlot * S.wireSlots(sim.cfg, 0).length;
+  setV('o-slot', w.wires.map(function(k){ return k.crossing !== null ? (k.slot + 1) + '→' + (k.crossing + 1) : String(k.slot + 1); }).join(' · '), '/ ' + MD.slots.length); setV('o-layer', w.layer, '/ ' + S.maxLayers(sim.cfg));
+  setV('o-build', w.buildD.toFixed(2), 'mm'); setV('o-len', w.lengthM.toFixed(3), 'm · 2 kawat');
+  $('o-bar').style.width = (Math.min(1, r.progress) * 100).toFixed(1) + '%';
+  setV('o-rpmA', r.rpmA.toFixed(0), 'rpm'); setV('o-rpmB', r.rpmB.toFixed(0), 'rpm'); setV('o-rpmC', r.rpmC.toFixed(0), 'rpm');
+  $('o-bob').textContent = r.bobbinTurns.toFixed(1);
+  $('o-ratio').textContent = '1 : ' + (r.ratio % 1 ? r.ratio.toFixed(2) : r.ratio);
+  setV('o-mod', r.module.toFixed(2), 'mm');
+  setV('o-mesh', r.meshHz.toFixed(1), 'Hz'); setV('o-vp', r.pitchVel.toFixed(1), 'mm/s'); setV('o-rim', r.rimVel.toFixed(0), 'mm/s');
+  Snd.update(r);
+}
+
+// ---------------- loop ----------------
+var clampAngle = 0, lastTooth = 0;
+function pose(dt){
+  var r = S.readout(sim);
+  spin(pivots.A, r.thetaA); spin(pivots.B, r.thetaB); spin(pivots.C, r.thetaC);
+  poseCoils(r);
+  var target = sim.clampClosed ? 0 : -sim.cfg.clampOpenRad;
+  clampAngle += (target - clampAngle) * (reduceMotion ? 1 : Math.min(1, dt * 5));
+  spin(pivots.K, clampAngle);
+  var tooth = Math.floor(Math.abs(r.thetaA) / (TAU / sim.cfg.zA));
+  if (tooth !== lastTooth) { if (r.rpmA > 0 && r.meshHz < 30) Snd.tooth(); lastTooth = tooth; }
+}
+var last = performance.now(), wasDone = false;
+function frame(now){
+  if (window.__jig && window.__jig.recording) { last = now; requestAnimationFrame(frame); return; }   // perekaman video: frame digerakkan oleh tick()
+  var dt = Math.min(0.05, (now - last) / 1000); last = now;
+  if (!window.__jig.frozen && S.step(sim, dt) > 0) Snd.turn();   // frozen: waktu dikendalikan tes
+  if (sim.done && !wasDone) { Snd.chime(); setStatus(); }
+  wasDone = sim.done;
+  if (camAnim) { camAnim.t = Math.min(1, camAnim.t + dt / 0.8); var t = camAnim.t, e = t < .5 ? 2*t*t : 1 - Math.pow(-2*t + 2, 2) / 2;
+    camera.position.lerpVectors(camAnim.p0, camAnim.p1, e); controls.target.lerpVectors(camAnim.t0, camAnim.t1, e); if (t >= 1) camAnim = null; }
+  pose(dt); controls.update(); hud(false);
+  renderer.render(scene, camera);
+  requestAnimationFrame(frame);
+}
+setStatus(); hud(true); requestAnimationFrame(frame);
+
+// kait untuk pengujian otomatis (Playwright)
+window.__jig = {
+  ready: ready, S: S,
+  get sim(){ return sim; },
+  info: function(){ return info; },
+  advance: function(sec){ var n = Math.ceil(sec * 120); for (var i = 0; i < n; i++) S.step(sim, sec / n); setStatus(); pose(1); hud(true); renderer.render(scene, camera); return S.readout(sim); },
+  start: function(){ if (!sim.running) toggleRun(); },
+  setView: function(n){ setView(n, true); pose(1); renderer.render(scene, camera); },
+  toggleClamp: toggleClamp,
+  /* maju satu frame video secara deterministik: sim + animasi klem + HUD + render */
+  setClampAngle: function(a){ clampAngle = a; },
+  /* posisi kamera langsung (perekaman video), tanpa menyentuh animasi lain */
+  setCam: function(pos, tgt){ camera.position.fromArray(pos); controls.target.fromArray(tgt); camera.lookAt(controls.target); },
+  tick: function(dt){ var n = Math.max(1, Math.ceil(dt * 240)), was = sim.done; for (var i = 0; i < n; i++) S.step(sim, dt / n); if (sim.done !== was) setStatus(); setStatus(); pose(dt); hud(true); renderer.render(scene, camera); return S.readout(sim); },
+  closeUp: function(dir, tgt, dist){ var t = new THREE.Vector3().fromArray(tgt); camera.position.copy(new THREE.Vector3().fromArray(dir).normalize().multiplyScalar(dist).add(t)); controls.target.copy(t); controls.update(); pose(1); renderer.render(scene, camera); },
+  coilState: function(){
+    var ends = strands.map(function(st){ st.updateMatrixWorld(true); return new THREE.Vector3(0, 0.5, 0).applyMatrix4(st.matrixWorld).toArray(); });     // ujung di gulungan
+    var feeds = strands.map(function(st){ return new THREE.Vector3(0, -0.5, 0).applyMatrix4(st.matrixWorld).toArray(); });   // ujung datang
+    var tubeEnds = coils.map(function(m){ if (!m.userData.shown) return null; var v = m.userData.curve.getPoint(m.userData.shown / m.userData.segs); return coilGroup.localToWorld(v).toArray(); });
+    return { shownTurns: coils.map(function(m){ return m.userData.shown / m.userData.segs * m.userData.sMax; }),
+      tubeR: coils.map(function(m){ return m.geometry.parameters.radius; }),
+      rot: coilGroup.rotation.z, strandEnds: ends, strandFeeds: feeds, tubeEnds: tubeEnds,
+      notches: notchGroup ? notchGroup.children.map(function(m){ return m.userData.flange; }) : [],
+      notchBands: notchU ? notchU.uNBands.value.map(function(v){ return [v.x, v.y]; }) : [],
+      lines: bobbinMeshes.reduce(function(a, o){ return a + o.children.filter(function(k){ return k.isLineSegments; }).length; }, 0) }; },
+  liveBox: function(){ model.updateMatrixWorld(true); var b = new THREE.Box3().setFromObject(model); return {min: b.min.toArray(), max: b.max.toArray()}; },
+  pivotAngles: function(){ var q = function(p){ return p ? 2 * Math.atan2(new THREE.Vector3(p.quaternion.x, p.quaternion.y, p.quaternion.z).dot(p.userData.axis), p.quaternion.w) : null; };
+    return {A: q(pivots.A), B: q(pivots.B), C: q(pivots.C), K: q(pivots.K)}; },
+  axisWorld: function(){ var o = {}; ['A','B','C','K'].forEach(function(k){ var p = pivots[k]; if (!p) return; var w = new THREE.Vector3(); p.getWorldPosition(w);
+    o[k] = {pos: w.toArray().map(function(v){ return +v.toFixed(3); }), dir: p.userData.axis.clone().transformDirection(p.parent.matrixWorld).toArray().map(function(v){ return +v.toFixed(4); })}; }); return o; }
+};
+})();
+</script>

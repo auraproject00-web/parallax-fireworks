@@ -1,0 +1,9 @@
+{
+  "name": "winding-jig-ji9g-cmg21",
+  "private": true,
+  "scripts": {
+    "test": "node --test test/sim.test.js",
+    "shoot": "node test/shoot.js",
+    "video": "node tools/record.js"
+  }
+}
